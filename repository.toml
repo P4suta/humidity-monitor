@@ -1,0 +1,7 @@
+name = "humidity-monitor"
+summary = "Record SwitchBot temperature and humidity over Bluetooth on Linux"
+install = "cargo install --locked --path ."
+usage = "humidity-monitor discover hci0"
+documentation_index = true
+copyright = "Yasunobu"
+license = "MIT OR Apache-2.0"

@@ -2,10 +2,17 @@
 members = ["crates/switchbot-meter"]
 resolver = "3"
 
+[workspace.package]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/P4suta/humidity-monitor"
+
 [package]
 name = "humidity-monitor"
 version = "0.1.0"
 edition = "2024"
+license.workspace = true
+repository.workspace = true
+description = "Record SwitchBot temperature and humidity over Bluetooth on Linux"
 publish = false
 
 [dependencies]
