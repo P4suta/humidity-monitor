@@ -194,3 +194,31 @@ fn page(app: &App, view: View) -> Result<Markup> {
         }
     }}} })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Sample, trend};
+
+    #[test]
+    fn series_draws_each_run_endpoint_and_leaves_isolated_points_to_the_markers() {
+        let rows = [50, 52, 46, 47, 51]
+            .into_iter()
+            .enumerate()
+            .map(|(minute, humidity)| {
+                Ok::<_, ()>(Sample {
+                    received: minute as i64 * 60,
+                    humidity,
+                    tenths_c: 200,
+                    battery: 99,
+                })
+            });
+        let end = 532 * 60;
+        let bins = trend::group(rows, 0, end).unwrap();
+        assert_eq!(
+            series(&bins, 0, end).as_deref().map(str::trim_end),
+            Some("M32.00,68.0 L33.00,66.0 L34.00,72.0 L35.00,71.0 L36.00,67.0"),
+        );
+        assert!(series(&bins[2..], 0, end).is_none());
+    }
+}
