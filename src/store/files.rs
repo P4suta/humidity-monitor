@@ -177,8 +177,7 @@ mod tests {
                 assert!(directory.metadata()?.is_dir());
                 Err(std::io::Error::other("injected directory sync failure"))
             })
-            .err()
-            .expect("accepted readings without a durable directory entry");
+            .expect_err("accepted readings without a durable directory entry");
             assert_eq!(
                 error.root_cause().to_string(),
                 "injected directory sync failure"
