@@ -54,27 +54,84 @@ impl Bin {
     }
 }
 
+enum Interior {
+    Empty,
+    Run(Bin),
+    Extrema(Extrema),
+}
+
+struct Column {
+    first: Bin,
+    interior: Interior,
+    last: Option<Bin>,
+}
+
+impl Column {
+    fn new(first: Point) -> Self {
+        Self {
+            first: Bin::single(first),
+            interior: Interior::Empty,
+            last: None,
+        }
+    }
+
+    fn push(&mut self, point: Point) {
+        let run = self.last.as_mut().unwrap_or(&mut self.first);
+        let next = Bin::single(point);
+        if run.last.at / 60 + 1 == point.at / 60 {
+            run.last = point;
+            run.range.include(next.range);
+        } else if let Some(finished) = self.last.replace(next) {
+            match &mut self.interior {
+                Interior::Empty => self.interior = Interior::Run(finished),
+                Interior::Run(run) => {
+                    let mut range = run.range;
+                    range.include(finished.range);
+                    self.interior = Interior::Extrema(range);
+                }
+                Interior::Extrema(range) => range.include(finished.range),
+            }
+        }
+    }
+
+    fn finish(self, bins: &mut Vec<Bin>) {
+        bins.push(self.first);
+        match self.interior {
+            Interior::Empty => (),
+            Interior::Run(run) => bins.push(run),
+            Interior::Extrema(range) => {
+                let mut points = [range.low, range.high];
+                points.sort_unstable_by_key(|p| p.at);
+                bins.push(Bin::single(points[0]));
+                if points[0].at != points[1].at {
+                    bins.push(Bin::single(points[1]));
+                }
+            }
+        }
+        bins.extend(self.last);
+    }
+}
+
 pub(crate) fn group<E>(
     samples: impl Iterator<Item = Result<Sample, E>>,
     start: i64,
     end: i64,
 ) -> Result<Vec<Bin>, E> {
-    let width = (end.saturating_sub(start) / 60 / COLUMNS).max(1);
-    let bucket = |minute: i64| (minute - start / 60) / width;
-    let mut bins: Vec<Bin> = Vec::new();
-    for sample in samples {
-        let point = Point::from(sample?);
-        let minute = point.at / 60;
-        let next = Bin::single(point);
-        if let Some(last) = bins.last_mut()
-            && last.last.at / 60 + 1 == minute
-            && bucket(last.last.at / 60) == bucket(minute)
+    let first_minute = start.div_euclid(60);
+    let span = end.div_euclid(60) - first_minute;
+    let width = ((span + COLUMNS - 1) / COLUMNS).max(1);
+    let column = |at: i64| ((at.div_euclid(60) - first_minute) / width).min(COLUMNS - 1);
+    let mut samples = samples.peekable();
+    let mut bins = Vec::new();
+    while let Some(first) = samples.next().transpose()? {
+        let index = column(first.received);
+        let mut current = Column::new(first.into());
+        while let Some(row) =
+            samples.next_if(|row| row.as_ref().is_ok_and(|s| column(s.received) == index))
         {
-            last.last = point;
-            last.range.include(next.range);
-        } else {
-            bins.push(next);
+            current.push(row?.into());
         }
+        current.finish(&mut bins);
     }
     Ok(bins)
 }
@@ -82,6 +139,78 @@ pub(crate) fn group<E>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn sample(minute: i64, humidity: u8) -> Sample {
+        Sample {
+            received: minute * 60 + 7,
+            humidity,
+            tenths_c: 200,
+            battery: 99,
+        }
+    }
+
+    fn bounds(bins: &[Bin]) -> Vec<(i64, i64, u8, u8)> {
+        bins.iter()
+            .map(|b| {
+                (
+                    b.first.at / 60,
+                    b.last.at / 60,
+                    b.range.low.rh,
+                    b.range.high.rh,
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn marks_observed_interior_extrema_and_keeps_the_outer_runs() {
+        let points = [
+            (0, 41),
+            (1, 42),
+            (3, 50),
+            (4, 97),
+            (5, 51),
+            (8, 20),
+            (9, 3),
+            (10, 25),
+            (12, 40),
+            (13, 43),
+        ];
+        let rows = points.into_iter().map(|(m, h)| Ok::<_, ()>(sample(m, h)));
+        let bins = group(rows, 0, 300 * 20 * 60).unwrap();
+        assert_eq!(
+            bounds(&bins),
+            [
+                (0, 1, 41, 42),
+                (4, 4, 97, 97),
+                (9, 9, 3, 3),
+                (12, 13, 40, 43)
+            ]
+        );
+    }
+
+    #[test]
+    fn bounds_a_fragmented_year_and_includes_the_last_minute() {
+        let last = 365 * 1440;
+        let rows = (0..=last)
+            .step_by(2)
+            .map(|m| Ok::<_, ()>(sample(m, (m % 101) as u8)));
+        let bins = group(rows, 7, last * 60 + 7).unwrap();
+        assert!(bins.len() <= 300 * 4, "{} chart entries", bins.len());
+        assert_eq!(bins.first().unwrap().first.at, 7);
+        assert_eq!(bins.last().unwrap().last.at, last * 60 + 7);
+        assert!(bins.iter().all(|b| b.first == b.last));
+    }
+
+    #[test]
+    fn a_constant_interior_range_has_one_marker_at_an_observed_time() {
+        let rows = [0, 3, 5, 7, 9].map(|m| Ok::<_, ()>(sample(m, 50)));
+        let bins = group(rows.into_iter(), 0, 300 * 10 * 60).unwrap();
+        assert_eq!(
+            bounds(&bins),
+            [(0, 0, 50, 50), (3, 3, 50, 50), (9, 9, 50, 50)]
+        );
+    }
 
     #[test]
     fn starts_chart_buckets_at_the_requested_utc_minute() {
