@@ -112,6 +112,24 @@ fn assert_commit(path: &Path, committed: bool) -> Result<()> {
 }
 
 #[test]
+fn idle_retention_ticks_write_only_when_a_sample_actually_expires() -> Result<()> {
+    let dir = tempfile::tempdir()?;
+    let mut store = open(&dir.path().join("retention.redb"))?.with_notifications(false);
+    store.record(0, reading(45))?;
+    store.tick(600)?;
+    let boundary = 365 * 86400;
+    {
+        let tx = store.db.begin_write()?;
+        assert!(!store.stage(&tx, boundary, None)?);
+    }
+    assert_eq!(store.history(0, 1, 1)?.len(), 1);
+    store.tick(i64::MAX)?;
+    assert!(store.history(0, 1, 1)?.is_empty());
+    assert_eq!(store.latest()?.unwrap().received, 0);
+    Ok(())
+}
+
+#[test]
 fn an_open_dashboard_snapshot_keeps_one_generation_while_the_writer_advances() -> Result<()> {
     let dir = tempfile::tempdir()?;
     let mut writer = open(&dir.path().join("meter.redb"))?;
