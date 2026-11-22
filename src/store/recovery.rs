@@ -156,7 +156,7 @@ fn an_open_dashboard_snapshot_keeps_one_generation_while_the_writer_advances() -
     assert_eq!(before.latest()?.unwrap().received, 1);
     assert_eq!(before.state()?.received, Some(1));
     assert_eq!(before.history(i64::MIN, i64::MAX, 2)?.len(), 1);
-    assert_eq!(before.bins(1, 1)?[0].last_rh, 45);
+    assert_eq!(before.bins(1, 1)?[0].last.rh, 45);
     assert!(before.bins(2, 1)?.is_empty());
     let after = writer.snapshot()?;
     assert_eq!(after.latest()?.unwrap().received, 602);
@@ -165,7 +165,7 @@ fn an_open_dashboard_snapshot_keeps_one_generation_while_the_writer_advances() -
     assert_eq!(after.bins(1, 602)?.len(), 2);
     assert_eq!(after.bins(0, i64::MAX)?.len(), 2);
     let point = after.bins(602, 602)?;
-    assert_eq!((point[0].first, point[0].last), (602, 602));
+    assert_eq!((point[0].first.at, point[0].last.at), (602, 602));
     Ok(())
 }
 

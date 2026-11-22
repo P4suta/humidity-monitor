@@ -97,14 +97,14 @@ fn chart(data: &[Bin], start: i64, end: i64, config: &Config) -> Markup {
     let mut line = String::new();
     let mut previous = None;
     for b in data {
-        if previous != Some(b.first / 60 - 1) && !line.is_empty() {
+        if previous != Some(b.first.at / 60 - 1) && !line.is_empty() {
             runs.push(std::mem::take(&mut line));
         }
         let op = if line.is_empty() { "M" } else { "L" };
-        let (x, y) = coordinate(b.first, start, end, b.first_rh);
-        let (u, v) = coordinate(b.last, start, end, b.last_rh);
+        let (x, y) = coordinate(b.first.at, start, end, b.first.rh);
+        let (u, v) = coordinate(b.last.at, start, end, b.last.rh);
         write!(line, "{op}{x:.2},{y:.1} L{u:.2},{v:.1} ").unwrap();
-        previous = Some(b.last / 60);
+        previous = Some(b.last.at / 60);
     }
     if !line.is_empty() {
         runs.push(line);
@@ -117,11 +117,11 @@ fn chart(data: &[Bin], start: i64, end: i64, config: &Config) -> Markup {
             @for tick in [0,50,100]{line.grid x1="32" x2="564" y1=(118-tick) y2=(118-tick){} text x="26" y=(122-tick) text-anchor="end"{(tick)}}
             @for run in runs{path.series d=(run) {}}
             @for b in data{
-                @let (x,y)=coordinate(b.first,start,end,b.low);
-                @let (_,v)=coordinate(b.first,start,end,b.high);
-                @if b.low!=b.high {line.extent x1=(x) x2=(x) y1=(y) y2=(v) {}}
+                @let (x,y)=coordinate(b.first.at,start,end,b.range.low.rh);
+                @let (_,v)=coordinate(b.first.at,start,end,b.range.high.rh);
+                @if b.range.low.rh!=b.range.high.rh {line.extent x1=(x) x2=(x) y1=(y) y2=(v) {}}
                 circle cx=(x) cy=(y) r="1.8"{}
-                @if b.low!=b.high{circle cx=(x) cy=(v) r="1.8"{}}
+                @if b.range.low.rh!=b.range.high.rh{circle cx=(x) cy=(v) r="1.8"{}}
             }
         }
         figcaption {span{(date(start,config))} span{(date(end,config))}}

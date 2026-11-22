@@ -1,13 +1,57 @@
 use crate::Sample;
 
-#[derive(Debug, Eq, PartialEq)]
+const COLUMNS: i64 = 300;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct Point {
+    pub at: i64,
+    pub rh: u8,
+}
+
+impl From<Sample> for Point {
+    fn from(sample: Sample) -> Self {
+        Self {
+            at: sample.received,
+            rh: sample.humidity,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct Extrema {
+    pub low: Point,
+    pub high: Point,
+}
+
+impl Extrema {
+    fn include(&mut self, other: Self) {
+        if other.low.rh < self.low.rh {
+            self.low = other.low;
+        }
+        if other.high.rh > self.high.rh {
+            self.high = other.high;
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct Bin {
-    pub first: i64,
-    pub last: i64,
-    pub low: u8,
-    pub high: u8,
-    pub first_rh: u8,
-    pub last_rh: u8,
+    pub first: Point,
+    pub last: Point,
+    pub range: Extrema,
+}
+
+impl Bin {
+    fn single(point: Point) -> Self {
+        Self {
+            first: point,
+            last: point,
+            range: Extrema {
+                low: point,
+                high: point,
+            },
+        }
+    }
 }
 
 pub(crate) fn group<E>(
@@ -15,30 +59,21 @@ pub(crate) fn group<E>(
     start: i64,
     end: i64,
 ) -> Result<Vec<Bin>, E> {
-    let width = (end.saturating_sub(start) / 60 / 300).max(1);
+    let width = (end.saturating_sub(start) / 60 / COLUMNS).max(1);
     let bucket = |minute: i64| (minute - start / 60) / width;
     let mut bins: Vec<Bin> = Vec::new();
     for sample in samples {
-        let sample = sample?;
-        let minute = sample.received / 60;
-        let rh = sample.humidity;
+        let point = Point::from(sample?);
+        let minute = point.at / 60;
+        let next = Bin::single(point);
         if let Some(last) = bins.last_mut()
-            && last.last / 60 + 1 == minute
-            && bucket(last.last / 60) == bucket(minute)
+            && last.last.at / 60 + 1 == minute
+            && bucket(last.last.at / 60) == bucket(minute)
         {
-            last.last = sample.received;
-            last.low = last.low.min(rh);
-            last.high = last.high.max(rh);
-            last.last_rh = rh;
+            last.last = point;
+            last.range.include(next.range);
         } else {
-            bins.push(Bin {
-                first: sample.received,
-                last: sample.received,
-                low: rh,
-                high: rh,
-                first_rh: rh,
-                last_rh: rh,
-            });
+            bins.push(next);
         }
     }
     Ok(bins)
@@ -61,9 +96,9 @@ mod tests {
         });
         let bins = group(rows, start, start + 300 * 7 * 60).unwrap();
         assert_eq!(bins.len(), 2);
-        assert_eq!((bins[0].first, bins[0].last), (start, start + 6 * 60));
+        assert_eq!((bins[0].first.at, bins[0].last.at), (start, start + 6 * 60));
         assert_eq!(
-            (bins[1].first, bins[1].last),
+            (bins[1].first.at, bins[1].last.at),
             (start + 7 * 60, start + 9 * 60)
         );
     }
@@ -91,7 +126,16 @@ mod tests {
         let result = group(rows.into_iter(), 60, 60 + 300 * 6 * 60).unwrap();
         let actual: Vec<_> = result
             .iter()
-            .map(|b| (b.first, b.last, b.first_rh, b.last_rh, b.low, b.high))
+            .map(|b| {
+                (
+                    b.first.at,
+                    b.last.at,
+                    b.first.rh,
+                    b.last.rh,
+                    b.range.low.rh,
+                    b.range.high.rh,
+                )
+            })
             .collect();
         assert_eq!(
             actual,
