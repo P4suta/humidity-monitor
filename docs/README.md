@@ -85,11 +85,13 @@ A restart after the server accepts a message and before the local acknowledgemen
 The build uses stable Rust and a locked dependency graph.
 Install Chrome, a matching ChromeDriver, and `dbus-daemon` to run the isolated browser and message bus tests.
 Set `CHROMEDRIVER` when the driver is outside the executable search path.
+On a native ARM64 Docker engine, `just receiver-footprint` checks the container executable and measures the receiver's peak resident memory while it waits and serves a year of readings.
 
 ```sh
 mise x -- just check
 mise x -- just mutation
 mise x -- just storage-mutation
 mise x -- just storage-endurance
+mise x -- just receiver-footprint
 podman build -f Containerfile -t localhost/humidity-monitor:installed .
 ```
