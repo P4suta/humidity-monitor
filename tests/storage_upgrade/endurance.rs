@@ -14,6 +14,30 @@ fn reading(rh: u8) -> Reading {
     .unwrap()
 }
 
+async fn with_year_dashboard(
+    store: Store,
+    check: impl AsyncFnOnce(String) -> Result<()>,
+) -> Result<()> {
+    let cfg = Config::parse(
+        "address='AA:BB:CC:DD:EE:FF'\ndatabase='year.redb'\n[policy]\nhigh_above=55\nhigh_seconds=1800\nrecovery_seconds=300\nloss_seconds=600",
+    )?;
+    let app = dashboard(Arc::new(Mutex::new(store)), Arc::new(cfg));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    let url = format!("http://{}/?period=1y&paused=true", listener.local_addr()?);
+    let (stop, stopped) = tokio::sync::oneshot::channel();
+    let server = tokio::spawn(async {
+        axum::serve(listener, app)
+            .with_graceful_shutdown(async {
+                let _ = stopped.await;
+            })
+            .await
+    });
+    let result = check(url).await;
+    stop.send(()).unwrap();
+    server.await??;
+    result
+}
+
 #[test]
 #[ignore = "run with just storage-endurance"]
 fn ten_thousand_years_of_sparse_receptions_survive_a_restart() -> Result<()> {
@@ -85,28 +109,16 @@ async fn dense_year_import_matches_every_sample_and_plots_a_real_gap() -> Result
         );
     }
     drop(rows);
-    let cfg = Config::parse(
-        "address='AA:BB:CC:DD:EE:FF'\ndatabase='year.redb'\n[policy]\nhigh_above=55\nhigh_seconds=1800\nrecovery_seconds=300\nloss_seconds=600",
-    )?;
-    let app = dashboard(Arc::new(Mutex::new(store.clone())), Arc::new(cfg));
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
-    let url = format!("http://{}/?period=1y&paused=true", listener.local_addr()?);
-    let (stop, stopped) = tokio::sync::oneshot::channel();
-    let server = tokio::spawn(async {
-        axum::serve(listener, app)
-            .with_graceful_shutdown(async {
-                let _ = stopped.await;
-            })
-            .await
-    });
-    let chart =
-        tokio::spawn(async move { reqwest::get(&url).await?.error_for_status()?.text().await });
-    store.record(now, reading(49))?;
-    let html = chart.await??;
-    assert_eq!(html.matches("<path class=\"series\"").count(), 2);
-    assert!(html.contains("以前の測定値"));
-    stop.send(()).unwrap();
-    server.await??;
+    with_year_dashboard(store.clone(), async |url| {
+        let chart =
+            tokio::spawn(async move { reqwest::get(&url).await?.error_for_status()?.text().await });
+        store.record(now, reading(49))?;
+        let html = chart.await??;
+        assert_eq!(html.matches("<path class=\"series\"").count(), 2);
+        assert!(html.contains("以前の測定値"));
+        Ok(())
+    })
+    .await?;
     drop(store);
     let mut db = Store::open(&target, ADDRESS.parse().unwrap(), now, POLICY, 1)?;
     db.tick(now + 60)?;
