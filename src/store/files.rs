@@ -46,7 +46,8 @@ fn paths(path: &Path) -> Result<(PathBuf, Option<PathBuf>)> {
     Ok((path.to_owned(), source))
 }
 
-const CACHE_BYTES: usize = 2 * 1024 * 1024;
+const RECEIVER_CACHE_BYTES: usize = 256 * 1024;
+const INITIALIZATION_CACHE_BYTES: usize = 2 * 1024 * 1024;
 
 fn open_existing(path: &Path, address: Address) -> Result<Database> {
     ensure!(
@@ -54,7 +55,7 @@ fn open_existing(path: &Path, address: Address) -> Result<Database> {
         "database path must name a regular file"
     );
     let db = Database::builder()
-        .set_cache_size(CACHE_BYTES)
+        .set_cache_size(RECEIVER_CACHE_BYTES)
         .set_check_integrity_on_open(true)
         .open(path)
         .with_context(|| format!("open redb history at {}", path.display()))?;
@@ -132,7 +133,7 @@ fn open_with_directory_sync(
         .tempfile_in(&workspace)?;
     let result = (|| -> Result<()> {
         let db = Database::builder()
-            .set_cache_size(CACHE_BYTES)
+            .set_cache_size(INITIALIZATION_CACHE_BYTES)
             .create(staged.path())?;
         let tx = db.begin_write()?;
         tx.open_table(IDENTITY)?
