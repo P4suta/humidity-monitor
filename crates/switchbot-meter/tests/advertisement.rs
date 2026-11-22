@@ -6,6 +6,24 @@ const MANUFACTURER: [u8; 12] = [0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x36, 3, 2, 
 const SERVICE: [u8; 3] = [0x77, 0, 100];
 
 #[test]
+fn address_requires_six_two_digit_hexadecimal_octets() {
+    for malformed in [
+        "A:B:C:D:E:F",
+        "AA:BB:CC:DD:EE",
+        "AA:BB:CC:DD:EE:FF:00",
+        "AA:BB:CC:DD:EE:+F",
+        "AA:BB:CC:DD:EE:GG",
+        "AA:BB:CC:DD:EE:",
+    ] {
+        assert!(malformed.parse::<Address>().is_err(), "{malformed}");
+    }
+    assert_eq!(
+        "00:01:09:0a:10:ff".parse::<Address>().unwrap().to_string(),
+        "00:01:09:0A:10:FF"
+    );
+}
+
+#[test]
 fn public_advertisement_decodes_for_the_registered_meter_only() {
     let target: Address = ADDRESS.parse().unwrap();
     assert_eq!(target.to_string(), ADDRESS);
