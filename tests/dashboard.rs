@@ -44,6 +44,17 @@ async fn text(client: &Client, session: &str, selector: &str) -> Result<String> 
     Ok(response["value"].as_str().unwrap().to_owned())
 }
 
+async fn follow_with_enter(client: &Client, session: &str, selector: &str) -> Result<()> {
+    let link = element(client, session, selector).await?;
+    client
+        .post(format!("{session}/element/{link}/value"))
+        .json(&json!({"text":"\u{e007}", "value":["\u{e007}"]}))
+        .send()
+        .await?
+        .error_for_status()?;
+    Ok(())
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn mobile_browser_navigates_all_ranges_and_exposes_missing_history() -> Result<()> {
     let dir = tempfile::tempdir()?;
@@ -157,13 +168,7 @@ async fn mobile_browser_navigates_all_ranges_and_exposes_missing_history() -> Re
             label
         );
         assert!(text(&client, &session, "table").await?.is_empty());
-        let history = element(&client, &session, "a.history-link").await?;
-        client
-            .post(format!("{session}/element/{history}/click"))
-            .json(&json!({}))
-            .send()
-            .await?
-            .error_for_status()?;
+        follow_with_enter(&client, &session, "a.history-link").await?;
         element(&client, &session, "tbody tr time[datetime]").await?;
         let refresh: Value = client
             .post(format!("{session}/elements"))
@@ -203,6 +208,8 @@ async fn mobile_browser_navigates_all_ranges_and_exposes_missing_history() -> Re
             markers["value"].as_array().unwrap().len(),
             usize::from(range != "24h")
         );
+        follow_with_enter(&client, &session, ".history-pages a[href$='#trend']").await?;
+        assert!(text(&client, &session, "table").await?.is_empty());
     }
     client.delete(session).send().await?.error_for_status()?;
     Ok(())
