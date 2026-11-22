@@ -147,7 +147,7 @@ async fn intermittent_year_bounds_the_http_response_and_keeps_exact_history_page
     )?;
     let store = open(&dir.path().join("intermittent.redb"))?;
     with_year_dashboard(store, async |url| {
-        let mut page_url = url.clone();
+        let mut page_url = format!("{url}&history=true");
         for page in 0..2 {
             let body = reqwest::get(&page_url)
                 .await?
@@ -158,22 +158,22 @@ async fn intermittent_year_bounds_the_http_response_and_keeps_exact_history_page
             assert!(!body.contains("<path class=\"series\""));
             let markers = body.matches("<circle ").count();
             assert!(
-                (300..=1200).contains(&markers),
+                (48..=192).contains(&markers),
                 "{markers} extrema and endpoints"
             );
             let (_, table) = body.split_once("<tbody>").unwrap();
             let (rows, _) = table.split_once("</tbody>").unwrap();
-            assert_eq!(rows.matches("<tr class=\"gap\">").count(), 60);
+            assert_eq!(rows.matches("<tr class=\"gap\">").count(), 12);
             let mut readings = rows.split("<time datetime=\"").skip(1);
-            for i in page * 60..(page + 1) * 60 {
+            for i in page * 12..(page + 1) * 12 {
                 let stamp = jiff::Timestamp::from_second(last - i * 120)?;
                 let (row, _) = readings.next().unwrap().split_once("</tr>").unwrap();
                 assert!(row.starts_with(&format!("{stamp}\"")));
                 assert!(row.contains(&format!("<td>{}％</td>", i % 101)));
             }
             assert!(readings.next().is_none());
-            let before = last - ((page + 1) * 60 - 1) * 120;
-            assert!(body.contains(&format!("before={before}\"")));
+            let before = last - ((page + 1) * 12 - 1) * 120;
+            assert!(body.contains(&format!("before={before}#history\"")));
             page_url = format!("{url}&before={before}");
         }
         Ok(())

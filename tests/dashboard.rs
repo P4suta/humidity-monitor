@@ -44,6 +44,17 @@ async fn text(client: &Client, session: &str, selector: &str) -> Result<String> 
     Ok(response["value"].as_str().unwrap().to_owned())
 }
 
+async fn follow_with_enter(client: &Client, session: &str, selector: &str) -> Result<()> {
+    let link = element(client, session, selector).await?;
+    client
+        .post(format!("{session}/element/{link}/value"))
+        .json(&json!({"text":"\u{e007}", "value":["\u{e007}"]}))
+        .send()
+        .await?
+        .error_for_status()?;
+    Ok(())
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn mobile_browser_navigates_all_ranges_and_exposes_missing_history() -> Result<()> {
     let dir = tempfile::tempdir()?;
@@ -58,7 +69,14 @@ async fn mobile_browser_navigates_all_ranges_and_exposes_missing_history() -> Re
         cfg.policy,
         365,
     )?;
-    for (seconds, rh) in [(87000, 51), (2400, 45), (2340, 46), (1200, 33), (1140, 34)] {
+    for (seconds, rh) in [
+        (87000, 51),
+        (2400, 45),
+        (2340, 49),
+        (2280, 46),
+        (1200, 33),
+        (1140, 34),
+    ] {
         let b = [0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x36, 3, 2, 0x96, rh, 0];
         store.record(
             now - seconds,
@@ -121,7 +139,7 @@ async fn mobile_browser_navigates_all_ranges_and_exposes_missing_history() -> Re
             .as_second(),
         now - 1140
     );
-    element(&client, &session, "tbody tr time[datetime]").await?;
+    assert!(text(&client, &session, "table").await?.is_empty());
     for (range, label) in [
         ("24h", "24時間"),
         ("7d", "7日"),
@@ -129,6 +147,16 @@ async fn mobile_browser_navigates_all_ranges_and_exposes_missing_history() -> Re
         ("1y", "1年"),
     ] {
         let link = element(&client, &session, &format!("nav a[data-period='{range}']")).await?;
+        let bounds: Value = client
+            .get(format!("{session}/element/{link}/rect"))
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        for dimension in ["width", "height"] {
+            assert!(bounds["value"][dimension].as_f64().unwrap() >= 48.0);
+        }
         client
             .post(format!("{session}/element/{link}/click"))
             .json(&json!({}))
@@ -139,6 +167,18 @@ async fn mobile_browser_navigates_all_ranges_and_exposes_missing_history() -> Re
             text(&client, &session, "a[aria-current='page']").await?,
             label
         );
+        assert!(text(&client, &session, "table").await?.is_empty());
+        follow_with_enter(&client, &session, "a.history-link").await?;
+        element(&client, &session, "tbody tr time[datetime]").await?;
+        let refresh: Value = client
+            .post(format!("{session}/elements"))
+            .json(&json!({"using":"css selector","value":"meta[http-equiv='refresh']"}))
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        assert!(refresh["value"].as_array().unwrap().is_empty());
         let table = text(&client, &session, "table").await?;
         ensure!(
             table.contains("欠測")
@@ -156,9 +196,20 @@ async fn mobile_browser_navigates_all_ranges_and_exposes_missing_history() -> Re
             .json()
             .await?;
         assert_eq!(pieces["value"].as_array().unwrap().len(), 2, "{range}");
-        if range != "24h" {
-            element(&client, &session, "svg circle[cy='67']").await?;
-        }
+        element(&client, &session, "svg path.series[d*='C']").await?;
+        let markers: Value = client
+            .post(format!("{session}/elements"))
+            .json(&json!({"using":"css selector","value":"svg circle"}))
+            .send()
+            .await?
+            .json()
+            .await?;
+        assert_eq!(
+            markers["value"].as_array().unwrap().len(),
+            usize::from(range != "24h")
+        );
+        follow_with_enter(&client, &session, ".history-pages a[href$='#trend']").await?;
+        assert!(text(&client, &session, "table").await?.is_empty());
     }
     client.delete(session).send().await?.error_for_status()?;
     Ok(())
