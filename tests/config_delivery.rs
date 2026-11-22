@@ -115,7 +115,9 @@ async fn failed_delivery_keeps_the_transition_and_retry_uses_bearer_auth() -> an
     publisher.send(event, at).await?;
     store.acknowledge(store.pending()?.unwrap().0)?;
     assert!(store.pending()?.is_none());
+    publisher.send(Event::Lost, 315_569_520_000).await?;
     let calls = calls.lock().unwrap();
+    assert!(calls[2].1.contains("315569520000"));
     assert_eq!(calls[0], calls[1]);
     assert_eq!(calls[1].0, "Bearer test-publisher");
     assert!(calls[1].1.contains("Laboratory") && calls[1].1.contains("受信途絶"));
