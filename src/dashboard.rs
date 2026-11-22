@@ -1,3 +1,5 @@
+mod curve;
+
 use crate::{Config, Store, trend::Bin, unix_now};
 use anyhow::Result;
 use axum::{
@@ -9,10 +11,7 @@ use axum::{
 };
 use maud::{DOCTYPE, Markup, html};
 use serde::Deserialize;
-use std::{
-    fmt::Write,
-    sync::{Arc, Mutex},
-};
+use std::sync::{Arc, Mutex};
 
 #[derive(Copy, Clone, Default, Deserialize, PartialEq, Eq)]
 enum Period {
@@ -94,23 +93,6 @@ fn coordinate(at: i64, start: i64, end: i64, rh: u8) -> (f64, f64) {
     )
 }
 
-fn series(run: &[Bin], start: i64, end: i64) -> Option<String> {
-    if matches!(run, [only] if only.first == only.last) {
-        return None;
-    }
-    let mut line = String::new();
-    for b in run {
-        let op = if line.is_empty() { "M" } else { "L" };
-        let (x, y) = coordinate(b.first.at, start, end, b.first.rh);
-        write!(line, "{op}{x:.2},{y:.1} ").unwrap();
-        if b.first != b.last {
-            let (x, y) = coordinate(b.last.at, start, end, b.last.rh);
-            write!(line, "L{x:.2},{y:.1} ").unwrap();
-        }
-    }
-    Some(line)
-}
-
 fn chart(data: &[Bin], start: i64, end: i64, config: &Config) -> Markup {
     let runs = data.chunk_by(|a, b| a.last.at / 60 + 1 == b.first.at / 60);
     html! {figure{
@@ -124,13 +106,15 @@ fn chart(data: &[Bin], start: i64, end: i64, config: &Config) -> Markup {
             }
             @if let Some([lo,hi])=config.reference {rect.reference x="32" y=(118-hi) width="532" height=(hi-lo) {}}
             @for tick in [0,50,100]{line.grid x1="32" x2="564" y1=(118-tick) y2=(118-tick){} text x="26" y=(122-tick) text-anchor="end"{(tick)}}
-            @for run in runs { @if let Some(line) = series(run, start, end) {path.series d=(line) {}} }
-            @for b in data{
-                @let (x,y)=coordinate(b.first.at,start,end,b.range.low.rh);
-                @let (_,v)=coordinate(b.first.at,start,end,b.range.high.rh);
-                @if b.range.low.rh!=b.range.high.rh {line.extent x1=(x) x2=(x) y1=(y) y2=(v) {}}
-                circle cx=(x) cy=(y) r="1.8"{}
-                @if b.range.low.rh!=b.range.high.rh{circle cx=(x) cy=(v) r="1.8"{}}
+            @for run in runs {
+                @if let [bin] = run && bin.first == bin.last {
+                    @let (x, y) = coordinate(bin.first.at, start, end, bin.first.rh);
+                    circle cx=(x) cy=(y) r="2.5" {}
+                } @else {
+                    @let points: Vec<_> = curve::anchors(run).into_iter()
+                        .map(|p| coordinate(p.at, start, end, p.rh)).collect();
+                    path.series d=(curve::path(&points)) {}
+                }
             }
         }
         figcaption {span{(date(start,config))} span{(date(end,config))}}
@@ -215,7 +199,7 @@ mod tests {
     use crate::{Sample, trend};
 
     #[test]
-    fn series_draws_each_run_endpoint_and_leaves_isolated_points_to_the_markers() {
+    fn chart_anchors_keep_observations_in_time_order() {
         let rows = [50, 52, 46, 47, 51]
             .into_iter()
             .enumerate()
@@ -227,12 +211,14 @@ mod tests {
                     battery: 99,
                 })
             });
-        let end = 532 * 60;
         let bins = trend::group(rows, 0, 96 * 60).unwrap();
         assert_eq!(
-            series(&bins, 0, end).as_deref().map(str::trim_end),
-            Some("M32.00,68.0 L33.00,66.0 L34.00,72.0 L35.00,71.0 L36.00,67.0"),
+            curve::anchors(&bins)
+                .iter()
+                .map(|p| (p.at, p.rh))
+                .collect::<Vec<_>>(),
+            [(0, 50), (60, 52), (120, 46), (180, 47), (240, 51)],
         );
-        assert!(series(&bins[2..], 0, end).is_none());
+        assert_eq!(curve::anchors(&bins[2..]).len(), 1);
     }
 }

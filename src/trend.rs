@@ -219,8 +219,12 @@ mod tests {
                 .filter(|&m| mask & (1 << m) != 0)
                 .map(|m| sample(m, ((m * 37) % 101) as u8))
                 .collect();
-            let result =
-                group(rows.iter().copied().map(Ok::<_, ()>), 7, COLUMNS * 12 * 60 + 7).unwrap();
+            let result = group(
+                rows.iter().copied().map(Ok::<_, ()>),
+                7,
+                COLUMNS * 12 * 60 + 7,
+            )
+            .unwrap();
             let runs: Vec<_> = rows
                 .chunk_by(|a, b| b.received - a.received == 60)
                 .collect();

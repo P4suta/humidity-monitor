@@ -58,7 +58,14 @@ async fn mobile_browser_navigates_all_ranges_and_exposes_missing_history() -> Re
         cfg.policy,
         365,
     )?;
-    for (seconds, rh) in [(87000, 51), (2400, 45), (2340, 46), (1200, 33), (1140, 34)] {
+    for (seconds, rh) in [
+        (87000, 51),
+        (2400, 45),
+        (2340, 49),
+        (2280, 46),
+        (1200, 33),
+        (1140, 34),
+    ] {
         let b = [0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x36, 3, 2, 0x96, rh, 0];
         store.record(
             now - seconds,
@@ -165,9 +172,18 @@ async fn mobile_browser_navigates_all_ranges_and_exposes_missing_history() -> Re
             .json()
             .await?;
         assert_eq!(pieces["value"].as_array().unwrap().len(), 2, "{range}");
-        if range != "24h" {
-            element(&client, &session, "svg circle[cy='67']").await?;
-        }
+        element(&client, &session, "svg path.series[d*='C']").await?;
+        let markers: Value = client
+            .post(format!("{session}/elements"))
+            .json(&json!({"using":"css selector","value":"svg circle"}))
+            .send()
+            .await?
+            .json()
+            .await?;
+        assert_eq!(
+            markers["value"].as_array().unwrap().len(),
+            usize::from(range != "24h")
+        );
     }
     client.delete(session).send().await?.error_for_status()?;
     Ok(())
