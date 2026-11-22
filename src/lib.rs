@@ -1,3 +1,4 @@
+pub mod bluez;
 mod config;
 mod notify;
 mod store;
