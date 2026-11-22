@@ -30,6 +30,15 @@ pub struct Store {
     notifications: bool,
 }
 
+pub(crate) fn require_database_file(path: &Path) -> Result<()> {
+    let name = path.as_os_str().as_encoded_bytes();
+    ensure!(
+        !name.is_empty() && name != b":memory:" && !name.starts_with(b"file:"),
+        "database must name a persistent filesystem path"
+    );
+    Ok(())
+}
+
 impl Store {
     pub fn open(
         path: &Path,
@@ -42,6 +51,7 @@ impl Store {
             retention_days > 0 && now >= 0,
             "invalid retention or start time"
         );
+        require_database_file(path)?;
         let mut db = Connection::open(path)?;
         db.pragma_update(None, "journal_mode", "WAL")?;
         let tx = db.transaction()?;

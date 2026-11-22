@@ -61,6 +61,7 @@ pub fn valid_adapter(adapter: &str) -> bool {
 impl Config {
     pub fn parse(input: &str) -> Result<Self> {
         let f: FileConfig = toml::from_str(input).context("invalid monitor configuration")?;
+        crate::store::require_database_file(&f.database)?;
         let p = f.policy;
         ensure!(
             p.high_above <= 100

@@ -21,6 +21,22 @@ loss_seconds = 90
 "#;
 
 #[test]
+fn configuration_requires_a_persistent_database_file() {
+    for path in [
+        "",
+        ":memory:",
+        "file::memory:?cache=shared",
+        "file:fixture?mode=memory",
+    ] {
+        assert!(
+            Config::parse(&EXAMPLE.replace("readings.sqlite", path)).is_err(),
+            "{path:?}"
+        );
+    }
+    assert!(Config::parse(&EXAMPLE.replace("readings.sqlite", "./:memory:")).is_ok());
+}
+
+#[test]
 fn installations_can_set_all_display_and_monitoring_options() -> anyhow::Result<()> {
     let c = Config::parse(EXAMPLE)?;
     assert_eq!(c.policy.high_above, 80);

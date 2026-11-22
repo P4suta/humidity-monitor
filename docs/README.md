@@ -19,6 +19,7 @@ cargo run --locked -- discover hci0
 Save the following configuration as `monitor.toml` and replace the example address.
 Supply the humidity threshold and confirmation times for the installation.
 Durations use seconds.
+Set `database` to a filesystem path for persistent history.
 The database directory must exist and be writable by the service account.
 
 ```toml
