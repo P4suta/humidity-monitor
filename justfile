@@ -17,4 +17,4 @@ storage-endurance:
 
 storage-mutation file="src/store.rs" filter="." tests="":
     docker build --target storage -f verification/Containerfile.mutations -t humidity-storage-mutations .
-    docker run --rm --network=none --cpus=2 --memory=2g --memory-swap=2g --pids-limit=256 "$(docker image inspect --format='{{ "{{.Id}}" }}' humidity-storage-mutations)" timeout 1200 cargo mutants --in-place --timeout 25 --file {{ quote(file) }} --re {{ quote(filter) }} --cargo-test-arg=--lib --cargo-test-arg=--test=storage --cargo-test-arg=--test=storage_upgrade {{ if tests == "" { "" } else { "--cargo-test-arg=" + quote(tests) } }}
+    docker run --rm --network=none --cpus=2 --memory=2g --memory-swap=2g --pids-limit=256 --tmpfs /test-tmp:rw,nosuid,nodev,size=192m,mode=1777 --env TMPDIR=/test-tmp "$(docker image inspect --format='{{ "{{.Id}}" }}' humidity-storage-mutations)" timeout 1200 cargo mutants --in-place --timeout 60 --file {{ quote(file) }} --re {{ quote(filter) }} --cargo-test-arg=--lib --cargo-test-arg=--test=storage --cargo-test-arg=--test=storage_upgrade {{ if tests == "" { "" } else { "--cargo-test-arg=" + quote(tests) } }}
