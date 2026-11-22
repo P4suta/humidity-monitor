@@ -155,11 +155,10 @@ async fn mobile_browser_navigates_all_ranges_and_exposes_missing_history() -> Re
             .await?
             .json()
             .await?;
-        assert_eq!(
-            pieces["value"].as_array().unwrap().len(),
-            if range == "24h" { 2 } else { 3 },
-            "{range}"
-        );
+        assert_eq!(pieces["value"].as_array().unwrap().len(), 2, "{range}");
+        if range != "24h" {
+            element(&client, &session, "svg circle[cy='67']").await?;
+        }
     }
     client.delete(session).send().await?.error_for_status()?;
     Ok(())

@@ -14,6 +14,30 @@ fn reading(rh: u8) -> Reading {
     .unwrap()
 }
 
+async fn with_year_dashboard(
+    store: Store,
+    check: impl AsyncFnOnce(String) -> Result<()>,
+) -> Result<()> {
+    let cfg = Config::parse(
+        "address='AA:BB:CC:DD:EE:FF'\ndatabase='year.redb'\n[policy]\nhigh_above=55\nhigh_seconds=1800\nrecovery_seconds=300\nloss_seconds=600",
+    )?;
+    let app = dashboard(Arc::new(Mutex::new(store)), Arc::new(cfg));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    let url = format!("http://{}/?period=1y&paused=true", listener.local_addr()?);
+    let (stop, stopped) = tokio::sync::oneshot::channel();
+    let server = tokio::spawn(async {
+        axum::serve(listener, app)
+            .with_graceful_shutdown(async {
+                let _ = stopped.await;
+            })
+            .await
+    });
+    let result = check(url).await;
+    stop.send(()).unwrap();
+    server.await??;
+    result
+}
+
 #[test]
 #[ignore = "run with just storage-endurance"]
 fn ten_thousand_years_of_sparse_receptions_survive_a_restart() -> Result<()> {
@@ -85,28 +109,16 @@ async fn dense_year_import_matches_every_sample_and_plots_a_real_gap() -> Result
         );
     }
     drop(rows);
-    let cfg = Config::parse(
-        "address='AA:BB:CC:DD:EE:FF'\ndatabase='year.redb'\n[policy]\nhigh_above=55\nhigh_seconds=1800\nrecovery_seconds=300\nloss_seconds=600",
-    )?;
-    let app = dashboard(Arc::new(Mutex::new(store.clone())), Arc::new(cfg));
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
-    let url = format!("http://{}/?period=1y&paused=true", listener.local_addr()?);
-    let (stop, stopped) = tokio::sync::oneshot::channel();
-    let server = tokio::spawn(async {
-        axum::serve(listener, app)
-            .with_graceful_shutdown(async {
-                let _ = stopped.await;
-            })
-            .await
-    });
-    let chart =
-        tokio::spawn(async move { reqwest::get(&url).await?.error_for_status()?.text().await });
-    store.record(now, reading(49))?;
-    let html = chart.await??;
-    assert_eq!(html.matches("<path class=\"series\"").count(), 2);
-    assert!(html.contains("以前の測定値"));
-    stop.send(()).unwrap();
-    server.await??;
+    with_year_dashboard(store.clone(), async |url| {
+        let chart =
+            tokio::spawn(async move { reqwest::get(&url).await?.error_for_status()?.text().await });
+        store.record(now, reading(49))?;
+        let html = chart.await??;
+        assert_eq!(html.matches("<path class=\"series\"").count(), 2);
+        assert!(html.contains("以前の測定値"));
+        Ok(())
+    })
+    .await?;
     drop(store);
     let mut db = Store::open(&target, ADDRESS.parse().unwrap(), now, POLICY, 1)?;
     db.tick(now + 60)?;
@@ -114,4 +126,57 @@ async fn dense_year_import_matches_every_sample_and_plots_a_real_gap() -> Result
     assert!(remaining.len() > 1400 && remaining.len() <= 1441);
     assert!(remaining.iter().all(|r| r.received >= now + 60 - 86400));
     Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "run with just storage-endurance"]
+async fn intermittent_year_bounds_the_http_response_and_keeps_exact_history_pages() -> Result<()> {
+    const COUNT: i64 = 364 * 1440 / 2;
+    let dir = tempfile::tempdir()?;
+    let source = legacy(&dir.path().join("intermittent.sqlite"))?;
+    let last = (unix_now()? / 60 - 5) * 60 + 7;
+    source.execute_batch("DELETE FROM samples; DELETE FROM outbox;")?;
+    source.execute(
+        "WITH RECURSIVE ticks(i) AS (VALUES(0) UNION ALL SELECT i+1 FROM ticks WHERE i+1 < ?1)
+         INSERT INTO samples SELECT (?2-i*120)/60, ?2-i*120, 200, i%101, 99 FROM ticks",
+        rusqlite::params![COUNT, last],
+    )?;
+    source.execute(
+        "UPDATE monitor SET received=?1, humidity=0, pending_since=NULL",
+        [last],
+    )?;
+    let store = open(&dir.path().join("intermittent.redb"))?;
+    with_year_dashboard(store, async |url| {
+        let mut page_url = url.clone();
+        for page in 0..2 {
+            let body = reqwest::get(&page_url)
+                .await?
+                .error_for_status()?
+                .text()
+                .await?;
+            assert!(body.len() < 128 * 1024, "{} response bytes", body.len());
+            assert!(!body.contains("<path class=\"series\""));
+            let markers = body.matches("<circle ").count();
+            assert!(
+                (300..=1200).contains(&markers),
+                "{markers} extrema and endpoints"
+            );
+            let (_, table) = body.split_once("<tbody>").unwrap();
+            let (rows, _) = table.split_once("</tbody>").unwrap();
+            assert_eq!(rows.matches("<tr class=\"gap\">").count(), 60);
+            let mut readings = rows.split("<time datetime=\"").skip(1);
+            for i in page * 60..(page + 1) * 60 {
+                let stamp = jiff::Timestamp::from_second(last - i * 120)?;
+                let (row, _) = readings.next().unwrap().split_once("</tr>").unwrap();
+                assert!(row.starts_with(&format!("{stamp}\"")));
+                assert!(row.contains(&format!("<td>{}％</td>", i % 101)));
+            }
+            assert!(readings.next().is_none());
+            let before = last - ((page + 1) * 60 - 1) * 120;
+            assert!(body.contains(&format!("before={before}\"")));
+            page_url = format!("{url}&before={before}");
+        }
+        Ok(())
+    })
+    .await
 }

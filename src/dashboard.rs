@@ -92,36 +92,43 @@ fn coordinate(at: i64, start: i64, end: i64, rh: u8) -> (f64, f64) {
     )
 }
 
-fn chart(data: &[Bin], start: i64, end: i64, config: &Config) -> Markup {
-    let mut runs = Vec::new();
+fn series(run: &[Bin], start: i64, end: i64) -> Option<String> {
+    if matches!(run, [only] if only.first == only.last) {
+        return None;
+    }
     let mut line = String::new();
-    let mut previous = None;
-    for b in data {
-        if previous != Some(b.first / 60 - 1) && !line.is_empty() {
-            runs.push(std::mem::take(&mut line));
-        }
+    for b in run {
         let op = if line.is_empty() { "M" } else { "L" };
-        let (x, y) = coordinate(b.first, start, end, b.first_rh);
-        let (u, v) = coordinate(b.last, start, end, b.last_rh);
-        write!(line, "{op}{x:.2},{y:.1} L{u:.2},{v:.1} ").unwrap();
-        previous = Some(b.last / 60);
+        let (x, y) = coordinate(b.first.at, start, end, b.first.rh);
+        write!(line, "{op}{x:.2},{y:.1} ").unwrap();
+        if b.first != b.last {
+            let (x, y) = coordinate(b.last.at, start, end, b.last.rh);
+            write!(line, "L{x:.2},{y:.1} ").unwrap();
+        }
     }
-    if !line.is_empty() {
-        runs.push(line);
-    }
+    Some(line)
+}
+
+fn chart(data: &[Bin], start: i64, end: i64, config: &Config) -> Markup {
+    let runs = data.chunk_by(|a, b| a.last.at / 60 + 1 == b.first.at / 60);
     html! {figure{
         svg viewBox="0 0 580 136" role="img" aria-labelledby="plot-title plot-desc" {
             title id="plot-title" {"相対湿度の推移"}
-            desc id="plot-desc" {"縦軸は相対湿度、横軸は受信時刻です。欠測区間で線が途切れます。測定値は履歴表で確認できます。"}
+            desc id="plot-desc" {
+                "縦軸は相対湿度、横軸は受信時刻です。"
+                "欠測区間で線が途切れます。"
+                "欠測が多い区間では途中の最小値と最大値を点で示します。"
+                "測定値は履歴表で確認できます。"
+            }
             @if let Some([lo,hi])=config.reference {rect.reference x="32" y=(118-hi) width="532" height=(hi-lo) {}}
             @for tick in [0,50,100]{line.grid x1="32" x2="564" y1=(118-tick) y2=(118-tick){} text x="26" y=(122-tick) text-anchor="end"{(tick)}}
-            @for run in runs{path.series d=(run) {}}
+            @for run in runs { @if let Some(line) = series(run, start, end) {path.series d=(line) {}} }
             @for b in data{
-                @let (x,y)=coordinate(b.first,start,end,b.low);
-                @let (_,v)=coordinate(b.first,start,end,b.high);
-                @if b.low!=b.high {line.extent x1=(x) x2=(x) y1=(y) y2=(v) {}}
+                @let (x,y)=coordinate(b.first.at,start,end,b.range.low.rh);
+                @let (_,v)=coordinate(b.first.at,start,end,b.range.high.rh);
+                @if b.range.low.rh!=b.range.high.rh {line.extent x1=(x) x2=(x) y1=(y) y2=(v) {}}
                 circle cx=(x) cy=(y) r="1.8"{}
-                @if b.low!=b.high{circle cx=(x) cy=(v) r="1.8"{}}
+                @if b.range.low.rh!=b.range.high.rh{circle cx=(x) cy=(v) r="1.8"{}}
             }
         }
         figcaption {span{(date(start,config))} span{(date(end,config))}}
@@ -186,4 +193,32 @@ fn page(app: &App, view: View) -> Result<Markup> {
             a href=(format!("/?period={key}&paused={}",!paused)){@if paused{"自動更新を再開"}@else{"自動更新を停止"}}
         }
     }}} })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Sample, trend};
+
+    #[test]
+    fn series_draws_each_run_endpoint_and_leaves_isolated_points_to_the_markers() {
+        let rows = [50, 52, 46, 47, 51]
+            .into_iter()
+            .enumerate()
+            .map(|(minute, humidity)| {
+                Ok::<_, ()>(Sample {
+                    received: minute as i64 * 60,
+                    humidity,
+                    tenths_c: 200,
+                    battery: 99,
+                })
+            });
+        let end = 532 * 60;
+        let bins = trend::group(rows, 0, end).unwrap();
+        assert_eq!(
+            series(&bins, 0, end).as_deref().map(str::trim_end),
+            Some("M32.00,68.0 L33.00,66.0 L34.00,72.0 L35.00,71.0 L36.00,67.0"),
+        );
+        assert!(series(&bins[2..], 0, end).is_none());
+    }
 }
