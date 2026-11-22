@@ -78,6 +78,57 @@ fn upgrades_a_wal_snapshot_and_keeps_the_sequence_after_reopening() -> Result<()
 }
 
 #[test]
+fn upgrades_an_idle_meter_and_preserves_an_active_loss() -> Result<()> {
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("standby.sqlite");
+    let source = legacy(&path)?;
+    source.execute_batch("DELETE FROM samples; DELETE FROM outbox; UPDATE monitor SET received=NULL,temperature=NULL,humidity=NULL,battery=NULL,pending_since=NULL,high=0,lost=1;")?;
+    let store = open(&path)?;
+    assert!(store.latest()?.is_none());
+    assert!(store.history(0, i64::MAX, 1)?.is_empty());
+    let state = store.state()?;
+    assert!(state.lost);
+    assert!(!state.high);
+    assert_eq!(state.received, None);
+    Ok(())
+}
+
+#[test]
+fn a_custom_legacy_name_still_resolves_after_archiving_the_original() -> Result<()> {
+    let dir = tempfile::tempdir()?;
+    let old = dir.path().join("indoor.history");
+    drop(legacy(&old)?);
+    let destination = old.with_added_extension("redb");
+    let first = open(&old)?.latest()?;
+    assert!(destination.is_file());
+    std::fs::rename(&old, dir.path().join("archived.sqlite"))?;
+    assert_eq!(open(&old)?.latest()?, first);
+    assert_eq!(open(&destination)?.latest()?, first);
+    assert!(!old.exists());
+    Ok(())
+}
+
+#[test]
+fn refuses_a_foreign_database_or_a_truncated_copy_of_meter_history() -> Result<()> {
+    let dir = tempfile::tempdir()?;
+    let other = dir.path().join("other.redb");
+    drop(redb::Database::create(&other)?);
+    assert!(open(&other).is_err());
+    let old = dir.path().join("source.sqlite");
+    drop(legacy(&old)?);
+    drop(open(&old)?);
+    let damaged = dir.path().join("damaged.redb");
+    std::fs::copy(old.with_extension("redb"), &damaged)?;
+    std::fs::OpenOptions::new()
+        .write(true)
+        .open(&damaged)?
+        .set_len(4096)?;
+    assert!(open(&damaged).is_err());
+    assert_eq!(std::fs::metadata(&damaged)?.len(), 4096);
+    Ok(())
+}
+
+#[test]
 fn failed_imports_preserve_the_source_and_never_publish_partial_history() -> Result<()> {
     let dir = tempfile::tempdir()?;
     let old = dir.path().join("readings.sqlite");
