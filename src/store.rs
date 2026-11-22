@@ -13,7 +13,7 @@ pub struct Sample {
 }
 
 impl Sample {
-    fn row(row: &Row<'_>) -> rusqlite::Result<Self> {
+    pub(crate) fn row(row: &Row<'_>) -> rusqlite::Result<Self> {
         Ok(Self {
             received: row.get(0)?,
             tenths_c: row.get(1)?,

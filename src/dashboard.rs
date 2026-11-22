@@ -1,4 +1,4 @@
-use crate::{Config, Store, unix_now};
+use crate::{Config, Store, trend::Bin, unix_now};
 use anyhow::Result;
 use axum::{
     Router,
@@ -86,39 +86,13 @@ fn coordinate(at: i64, start: i64, end: i64, rh: u8) -> (f64, f64) {
         118.0 - f64::from(rh),
     )
 }
-struct Bin {
-    first: i64,
-    last: i64,
-    low: u8,
-    high: u8,
-    first_rh: u8,
-    last_rh: u8,
-}
 fn bins(store: &Store, start: i64, end: i64) -> Result<Vec<Bin>> {
-    let width = ((end - start) / 60 / 300).max(1);
-    let mut stmt = store.db.prepare(
-        "WITH readings AS (
-            SELECT minute, humidity, minute - ROW_NUMBER() OVER (ORDER BY minute) AS run
-            FROM samples WHERE minute BETWEEN ?1/60 AND ?2/60 AND received BETWEEN ?1 AND ?2
-        ), bins AS (
-            SELECT MIN(minute) first, MAX(minute) last, MIN(humidity) low, MAX(humidity) high
-            FROM readings GROUP BY (minute - ?1/60)/?3, run
-        )
-        SELECT a.received, b.received, low, high, a.humidity, b.humidity FROM bins
-        JOIN samples a ON a.minute=bins.first JOIN samples b ON b.minute=bins.last ORDER BY bins.first"
+    let mut query = store.db.prepare(
+        "SELECT received,temperature,humidity,battery FROM samples
+         WHERE minute BETWEEN ?1/60 AND ?2/60 AND received BETWEEN ?1 AND ?2 ORDER BY minute",
     )?;
-    Ok(stmt
-        .query_map(params![start, end, width], |r| {
-            Ok(Bin {
-                first: r.get(0)?,
-                last: r.get(1)?,
-                low: r.get(2)?,
-                high: r.get(3)?,
-                first_rh: r.get(4)?,
-                last_rh: r.get(5)?,
-            })
-        })?
-        .collect::<rusqlite::Result<_>>()?)
+    let rows = query.query_map(params![start, end], crate::Sample::row)?;
+    Ok(crate::trend::group(rows, start, end)?)
 }
 
 fn chart(data: &[Bin], start: i64, end: i64, config: &Config) -> Markup {
