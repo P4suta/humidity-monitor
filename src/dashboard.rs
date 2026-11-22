@@ -92,30 +92,32 @@ fn coordinate(at: i64, start: i64, end: i64, rh: u8) -> (f64, f64) {
     )
 }
 
-fn chart(data: &[Bin], start: i64, end: i64, config: &Config) -> Markup {
-    let mut runs = Vec::new();
+fn series(run: &[Bin], start: i64, end: i64) -> Option<String> {
+    if matches!(run, [only] if only.first == only.last) {
+        return None;
+    }
     let mut line = String::new();
-    let mut previous = None;
-    for b in data {
-        if previous != Some(b.first.at / 60 - 1) && !line.is_empty() {
-            runs.push(std::mem::take(&mut line));
-        }
+    for b in run {
         let op = if line.is_empty() { "M" } else { "L" };
         let (x, y) = coordinate(b.first.at, start, end, b.first.rh);
-        let (u, v) = coordinate(b.last.at, start, end, b.last.rh);
-        write!(line, "{op}{x:.2},{y:.1} L{u:.2},{v:.1} ").unwrap();
-        previous = Some(b.last.at / 60);
+        write!(line, "{op}{x:.2},{y:.1} ").unwrap();
+        if b.first != b.last {
+            let (x, y) = coordinate(b.last.at, start, end, b.last.rh);
+            write!(line, "L{x:.2},{y:.1} ").unwrap();
+        }
     }
-    if !line.is_empty() {
-        runs.push(line);
-    }
+    Some(line)
+}
+
+fn chart(data: &[Bin], start: i64, end: i64, config: &Config) -> Markup {
+    let runs = data.chunk_by(|a, b| a.last.at / 60 + 1 == b.first.at / 60);
     html! {figure{
         svg viewBox="0 0 580 136" role="img" aria-labelledby="plot-title plot-desc" {
             title id="plot-title" {"相対湿度の推移"}
             desc id="plot-desc" {"縦軸は相対湿度、横軸は受信時刻です。欠測区間で線が途切れます。測定値は履歴表で確認できます。"}
             @if let Some([lo,hi])=config.reference {rect.reference x="32" y=(118-hi) width="532" height=(hi-lo) {}}
             @for tick in [0,50,100]{line.grid x1="32" x2="564" y1=(118-tick) y2=(118-tick){} text x="26" y=(122-tick) text-anchor="end"{(tick)}}
-            @for run in runs{path.series d=(run) {}}
+            @for run in runs { @if let Some(line) = series(run, start, end) {path.series d=(line) {}} }
             @for b in data{
                 @let (x,y)=coordinate(b.first.at,start,end,b.range.low.rh);
                 @let (_,v)=coordinate(b.first.at,start,end,b.range.high.rh);
