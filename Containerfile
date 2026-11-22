@@ -6,6 +6,12 @@ COPY crates/switchbot-meter/src crates/switchbot-meter/src
 COPY src src
 RUN RUSTFLAGS="-C target-feature=+crt-static" cargo install --locked --path . --target host-tuple --bin humidity-monitor --root /receiver
 
+FROM build AS footprint
+COPY tests tests
+ENV CARGO_PROFILE_TEST_DEBUG=0 HUMIDITY_MONITOR_RELEASE=/receiver/bin/humidity-monitor
+RUN cargo test --locked --no-run --test storage_upgrade
+CMD ["cargo", "test", "--offline", "--locked", "--test", "storage_upgrade", "footprint::", "--", "--ignored", "--test-threads=1", "--nocapture"]
+
 FROM gcr.io/distroless/cc-debian13:nonroot@sha256:cb87acc574abe719b6e5c547384defa2f7b1f24af9605d3f618cf852495d8be2
 COPY --from=build /receiver/bin/humidity-monitor /usr/local/bin/humidity-monitor
 ENTRYPOINT ["/usr/local/bin/humidity-monitor"]
