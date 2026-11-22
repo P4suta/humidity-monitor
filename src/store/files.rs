@@ -83,20 +83,33 @@ fn open_existing(path: &Path, address: Address) -> Result<Database> {
 }
 
 pub(super) fn open(path: &Path, address: Address, now: i64) -> Result<Database> {
+    open_with_directory_sync(path, address, now, File::sync_all)
+}
+
+fn open_with_directory_sync(
+    path: &Path,
+    address: Address,
+    now: i64,
+    sync_directory: impl FnOnce(&File) -> std::io::Result<()>,
+) -> Result<Database> {
     let (target, source) = paths(path)?;
-    if entry_exists(&target)? {
-        return open_existing(&target, address);
-    }
     let parent = target
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
         .unwrap_or(Path::new("."));
     let directory = File::open(parent).context("open database directory")?;
+    let open_target = || {
+        sync_directory(&directory).context("sync meter history directory")?;
+        open_existing(&target, address)
+    };
+    if entry_exists(&target)? {
+        return open_target();
+    }
     directory
         .lock()
         .context("lock database directory during initialization")?;
     if entry_exists(&target)? {
-        return open_existing(&target, address);
+        return open_target();
     }
     let workspace = target.with_added_extension("humidity-stage");
     match fs::DirBuilder::new().mode(0o700).create(&workspace) {
@@ -139,7 +152,6 @@ pub(super) fn open(path: &Path, address: Address, now: i64) -> Result<Database> 
         drop(db);
         staged.as_file().sync_all()?;
         staged.persist_noclobber(&target)?;
-        directory.sync_all()?;
         Ok(())
     })();
     if result.is_ok() {
@@ -148,5 +160,34 @@ pub(super) fn open(path: &Path, address: Address, now: i64) -> Result<Database> 
         let _ = fs::remove_dir(&workspace);
     }
     result?;
-    open_existing(&target, address)
+    open_target()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_published_name_requires_a_successful_directory_sync_on_every_open() -> Result<()> {
+        let dir = tempfile::tempdir()?;
+        let path = dir.path().join("meter.redb");
+        let address = "AA:BB:CC:DD:EE:FF".parse().unwrap();
+        for now in [41, 42] {
+            let error = open_with_directory_sync(&path, address, now, |directory| {
+                assert!(directory.metadata()?.is_dir());
+                Err(std::io::Error::other("injected directory sync failure"))
+            })
+            .err()
+            .expect("accepted readings without a durable directory entry");
+            assert_eq!(
+                error.root_cause().to_string(),
+                "injected directory sync failure"
+            );
+            assert!(path.is_file());
+        }
+        let db = open(&path, address, 43)?;
+        let tx = db.begin_read()?;
+        assert_eq!(tx.open_table(STATE)?.get(())?.unwrap().value().0, 41);
+        Ok(())
+    }
 }
