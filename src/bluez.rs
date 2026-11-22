@@ -6,15 +6,21 @@ use std::{
 };
 use switchbot_meter::{Address, Reading};
 use zbus::{
-    Connection, MatchRule, MessageStream, Proxy,
-    fdo::DBusProxy,
+    Connection, MatchRule, MessageStream, OwnedObjectPath, OwnedVariant, Variant, fdo::DBusProxy,
     message::Type,
-    zvariant::{OwnedObjectPath, OwnedValue, Value},
 };
 
 const DEVICE: &str = "org.bluez.Device1";
 const SERVICE: &str = "0000fd3d-0000-1000-8000-00805f9b34fb";
-type Properties = HashMap<String, OwnedValue>;
+type Properties = HashMap<String, OwnedVariant>;
+
+#[zbus::proxy(interface = "org.bluez.Adapter1")]
+trait Adapter {
+    fn set_discovery_filter(&self, filter: HashMap<&str, Variant<'_>>) -> zbus::Result<()>;
+    fn start_discovery(&self) -> zbus::Result<()>;
+    #[zbus(property)]
+    fn discovering(&self) -> zbus::Result<bool>;
+}
 
 #[derive(Default)]
 struct Parts {
@@ -71,13 +77,13 @@ impl Advertisements {
             ..Parts::default()
         });
         if let Some(data) = service {
-            parts.service = HashMap::<String, OwnedValue>::try_from(data)
+            parts.service = HashMap::<String, OwnedVariant>::try_from(data)
                 .ok()
                 .and_then(|mut map| map.remove(SERVICE))
                 .and_then(|bytes| Vec::try_from(bytes).ok());
         }
         if let Some(data) = manufacturer {
-            parts.manufacturer = HashMap::<u16, OwnedValue>::try_from(data)
+            parts.manufacturer = HashMap::<u16, OwnedVariant>::try_from(data)
                 .ok()
                 .and_then(|mut map| map.remove(&2409))
                 .and_then(|bytes| Vec::try_from(bytes).ok());
@@ -106,25 +112,23 @@ pub async fn scan(
         .await?;
     let rule = MatchRule::builder()
         .msg_type(Type::Signal)
-        .sender(owner.as_str())?
-        .build();
-    let mut signals = MessageStream::for_match_rule(rule, connection, Some(256)).await?;
+        .sender(owner.as_str())
+        .build()?;
+    let mut signals =
+        MessageStream::for_match_rule(rule, connection, std::num::NonZeroUsize::new(256)).await?;
     let path = format!("/org/bluez/{adapter}");
-    let proxy = Proxy::new(
-        connection,
-        owner.as_str(),
-        path.as_str(),
-        "org.bluez.Adapter1",
-    )
-    .await?;
-    let filter = HashMap::from([
-        ("Transport", Value::from("le")),
-        ("DuplicateData", Value::from(true)),
-    ]);
-    proxy
-        .call::<_, _, ()>("SetDiscoveryFilter", &(filter,))
+    let proxy = AdapterProxy::builder(connection)
+        .destination(owner.as_str())
+        .path(path.as_str())
+        .cache_properties(zbus::proxy::CacheProperties::No)
+        .build()
         .await?;
-    proxy.call::<_, _, ()>("StartDiscovery", &()).await?;
+    let filter = HashMap::from([
+        ("Transport", Variant::from("le")),
+        ("DuplicateData", Variant::from(true)),
+    ]);
+    proxy.set_discovery_filter(filter).await?;
+    proxy.start_discovery().await?;
     let mut ads = Advertisements::new(adapter, target);
     let started = Instant::now();
     let mut health = tokio::time::interval(Duration::from_secs(15));
@@ -132,9 +136,7 @@ pub async fn scan(
         let message = tokio::select! {
             result=signals.try_next()=>result?.ok_or_else(||anyhow::anyhow!("BlueZ signal stream closed"))?,
             _=health.tick()=>{
-                let properties=Proxy::new(connection,owner.as_str(),path.as_str(),"org.freedesktop.DBus.Properties").await?;
-                let discovering:OwnedValue=properties.call("Get",&("org.bluez.Adapter1","Discovering")).await?;
-                ensure!(bool::try_from(discovering)?,"BlueZ discovery stopped");
+                ensure!(proxy.discovering().await?, "BlueZ discovery stopped");
                 continue;
             }
         };

@@ -10,10 +10,7 @@ use std::{
     time::Duration,
 };
 use switchbot_meter::{Address, Reading};
-use zbus::{
-    connection::Builder,
-    zvariant::{OwnedObjectPath, OwnedValue, Value},
-};
+use zbus::{OwnedObjectPath, OwnedVariant, Variant, connection::Builder};
 
 struct Bus(Child);
 impl Drop for Bus {
@@ -26,7 +23,7 @@ impl Drop for Bus {
 struct Adapter(Arc<AtomicBool>);
 #[zbus::interface(name = "org.bluez.Adapter1")]
 impl Adapter {
-    fn set_discovery_filter(&self, filter: HashMap<String, OwnedValue>) -> zbus::fdo::Result<()> {
+    fn set_discovery_filter(&self, filter: HashMap<String, OwnedVariant>) -> zbus::fdo::Result<()> {
         if filter
             .get("Transport")
             .and_then(|v| <&str>::try_from(v).ok())
@@ -68,12 +65,12 @@ async fn isolated_bluez_signals_reach_sqlite_and_incomplete_updates_do_not_refre
     BufReader::new(daemon.0.stdout.take().unwrap()).read_line(&mut bus_address)?;
     let address = bus_address.trim();
     let started = Arc::new(AtomicBool::new(false));
-    let bluez = Builder::address(address)?
-        .name("org.bluez")?
-        .serve_at("/org/bluez/hci0", Adapter(started.clone()))?
+    let bluez = Builder::address(address)
+        .name("org.bluez")
+        .serve_at("/org/bluez/hci0", Adapter(started.clone()))
         .build()
         .await?;
-    let client = Builder::address(address)?.build().await?;
+    let client = Builder::address(address).build().await?;
     let target: Address = "AA:BB:CC:DD:EE:FF".parse().unwrap();
     let (seen, mut events) = tokio::sync::mpsc::unbounded_channel::<Reading>();
     let scan = tokio::spawn(async move {
@@ -88,17 +85,17 @@ async fn isolated_bluez_signals_reach_sqlite_and_incomplete_updates_do_not_refre
     let path = "/org/bluez/hci0/dev_AA_BB_CC_DD_EE_FF";
     let service = HashMap::from([(
         "0000fd3d-0000-1000-8000-00805f9b34fb",
-        Value::from(vec![b'w', 0, 100]),
+        Variant::from(vec![b'w', 0, 100]),
     )]);
     let manufacturer = HashMap::from([(
         2409u16,
-        Value::from(vec![
+        Variant::from(vec![
             0xaa_u8, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x36, 3, 2, 0x96, 55, 0,
         ]),
     )]);
     let props = HashMap::from([
-        ("ManufacturerData", Value::from(manufacturer)),
-        ("ServiceData", Value::from(service)),
+        ("ManufacturerData", Variant::from(manufacturer)),
+        ("ServiceData", Variant::from(service)),
     ]);
     let object = OwnedObjectPath::try_from(path)?;
     bluez

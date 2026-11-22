@@ -1,14 +1,14 @@
 use humidity_monitor::bluez::Advertisements;
 use std::collections::HashMap;
 use switchbot_meter::Address;
-use zbus::zvariant::{OwnedValue, Value};
+use zbus::{OwnedVariant, Variant};
 
-fn property<K>(key: K, bytes: &[u8]) -> OwnedValue
+fn property<K>(key: K, bytes: &[u8]) -> OwnedVariant
 where
-    K: std::hash::Hash + Eq + zbus::zvariant::Type + Into<Value<'static>>,
+    K: std::hash::Hash + Eq + zbus::Basic + Into<Variant<'static>>,
 {
-    let bytes = OwnedValue::try_from(Value::from(bytes.to_vec())).unwrap();
-    OwnedValue::from(HashMap::from([(key, bytes)]))
+    let bytes = OwnedVariant::try_from(Variant::from(bytes.to_vec())).unwrap();
+    OwnedVariant::from(HashMap::from([(key, bytes)]))
 }
 
 const PATH: &str = "/org/bluez/hci0/dev_AA_BB_CC_DD_EE_FF";
@@ -50,7 +50,7 @@ fn only_fresh_advertisement_parts_on_the_selected_adapter_advance_reception() {
     assert!(
         ads.update(
             PATH,
-            HashMap::from([("RSSI".into(), OwnedValue::from(-45i16))]),
+            HashMap::from([("RSSI".into(), OwnedVariant::from(-45i16))]),
             &[],
             3006
         )

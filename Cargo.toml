@@ -31,8 +31,15 @@ tokio = { version = "1", features = [
   "time",
   "signal",
 ] }
-zbus = { version = "5", default-features = false, features = ["tokio"] }
+zbus = { version = "6.5", default-features = false, features = [
+  "proxy",
+  "tokio",
+] }
 
 [dev-dependencies]
+zbus = { version = "6.5", default-features = false, features = [
+  "service",
+  "tokio",
+] }
 serde_json = "1"
 tempfile = "3"
