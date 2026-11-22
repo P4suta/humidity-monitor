@@ -46,7 +46,7 @@ fn paths(path: &Path) -> Result<(PathBuf, Option<PathBuf>)> {
     Ok((path.to_owned(), source))
 }
 
-const CACHE_BYTES: usize = 16 * 1024 * 1024;
+const CACHE_BYTES: usize = 2 * 1024 * 1024;
 
 fn open_existing(path: &Path, address: Address) -> Result<Database> {
     ensure!(
