@@ -43,6 +43,9 @@ fn upgrades_a_wal_snapshot_and_keeps_the_sequence_after_reopening() -> Result<()
     let source = legacy(&old)?;
     let mut store = open(&new)?;
     let rows = store.history(0, 130, 5)?;
+    assert_eq!(store.history(65, 66, 1)?, rows[1..]);
+    assert_eq!(store.history(59, 120, 5)?, rows[1..]);
+    assert!(store.history(66, 121, 1)?.is_empty());
     assert_eq!(
         rows.iter()
             .map(|r| (r.received, r.humidity))
