@@ -17,8 +17,8 @@ The chart spans 532 drawing units and the history table lists individual reading
 ## Decision
 
 Divide each chart period into at most 300 intervals.
-Keep the first and last continuous runs in each interval.
-Keep a single interior run in full.
+Represent each continuous run by its endpoints and humidity range.
+Keep the first and last runs in each interval and the interior run when only one lies between them.
 For two or more interior runs, mark their lowest and highest humidity at the observed times.
 Join endpoints only across consecutive recorded minutes.
 
