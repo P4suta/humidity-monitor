@@ -1,3 +1,5 @@
+#[path = "storage_upgrade/endurance.rs"]
+mod endurance;
 #[path = "storage_upgrade/recovery.rs"]
 mod recovery;
 
