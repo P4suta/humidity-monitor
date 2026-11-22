@@ -45,6 +45,8 @@ struct View {
     period: Period,
     before: Option<i64>,
     paused: Option<bool>,
+    #[serde(default)]
+    history: bool,
 }
 #[derive(Clone)]
 struct App {
@@ -138,6 +140,7 @@ fn chart(data: &[Bin], start: i64, end: i64, config: &Config) -> Markup {
 }
 
 fn page(app: &App, view: View) -> Result<Markup> {
+    const PAGE_SIZE: usize = 12;
     let now = unix_now()?;
     let c = &app.config;
     let (key, label, days) = view.period.info();
@@ -151,13 +154,14 @@ fn page(app: &App, view: View) -> Result<Markup> {
     let state = db.state()?;
     let data = db.bins(start, now)?;
     let end = view.before.unwrap_or(now + 1).clamp(start, now + 1);
-    let rows = db.history(start, end, 61)?;
+    let rows = db.history(start, end, PAGE_SIZE as u32 + 1)?;
     drop(db);
     let stale = now - state.received.unwrap_or(state.started) >= c.policy.loss_seconds;
-    let paused = view.paused.unwrap_or(false) || view.before.is_some();
+    let history = view.history || view.before.is_some();
+    let paused = view.paused.unwrap_or(false);
     Ok(html! {(DOCTYPE) html lang="ja"{head{
         meta charset="utf-8"; meta name="viewport" content="width=device-width, initial-scale=1";
-        @if !paused {meta http-equiv="refresh" content="60";}
+        @if !paused && !history {meta http-equiv="refresh" content="60";}
         title{(c.label) " · 温湿度"} style{(maud::PreEscaped(include_str!("dashboard.css")))}
     }body{main{
         section id="current" aria-labelledby="meter"{
@@ -179,19 +183,29 @@ fn page(app: &App, view: View) -> Result<Markup> {
             }}
             (chart(&data,start,now,c))
         }
-        section aria-labelledby="history"{h2 id="history"{"測定履歴"}
+        section id="history" aria-label="測定履歴"{
+            @if !history {
+                a.history-link href=(format!("/?period={key}&paused={paused}&history=true#history")) {"測定履歴を見る"}
+            }
+            div hidden[!history] {
+            h2{"測定履歴"}
             table{caption{(label) "の測定値 · " (c.timezone.iana_name().unwrap_or("UTC"))}
                 thead{tr{th scope="col"{"受信時刻"}th scope="col"{"相対湿度"}}}
-                tbody{@for (i,r) in rows.iter().take(60).enumerate(){
+                tbody{@for (i,r) in rows.iter().take(PAGE_SIZE).enumerate(){
                     @if i==0 && end/60-r.received/60>1 || i>0 && rows[i-1].received/60-r.received/60>1 {tr.gap{td colspan="2"{"欠測"}}}
                     tr{td{(time(r.received,c))}td{(r.humidity)"％"}}
                 }}
             }
-            @if rows.len()>60{a.more href=(format!("/?period={key}&before={}",rows[59].received)){"以前の測定値"}}
+            nav.history-pages aria-label="履歴の移動" {
+                @if rows.len()>PAGE_SIZE {a.more href=(format!("/?period={key}&paused={paused}&before={}#history",rows[PAGE_SIZE-1].received)){"以前の測定値"}}
+                @if view.before.is_some() {a href=(format!("/?period={key}&paused={paused}&history=true#history")){"最新の測定値"}}
+                a href=(format!("/?period={key}&paused={paused}#trend")){"グラフに戻る"}
+            }
+            }
         }
-        footer{a href=(format!("/?period={key}&paused={paused}")){"更新"}
+        @if !history {footer{a href=(format!("/?period={key}&paused={paused}")){"更新"}
             a href=(format!("/?period={key}&paused={}",!paused)){@if paused{"自動更新を再開"}@else{"自動更新を停止"}}
-        }
+        }}
     }}} })
 }
 

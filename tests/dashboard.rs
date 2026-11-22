@@ -121,7 +121,7 @@ async fn mobile_browser_navigates_all_ranges_and_exposes_missing_history() -> Re
             .as_second(),
         now - 1140
     );
-    element(&client, &session, "tbody tr time[datetime]").await?;
+    assert!(text(&client, &session, "table").await?.is_empty());
     for (range, label) in [
         ("24h", "24時間"),
         ("7d", "7日"),
@@ -139,6 +139,15 @@ async fn mobile_browser_navigates_all_ranges_and_exposes_missing_history() -> Re
             text(&client, &session, "a[aria-current='page']").await?,
             label
         );
+        assert!(text(&client, &session, "table").await?.is_empty());
+        let history = element(&client, &session, "a.history-link").await?;
+        client
+            .post(format!("{session}/element/{history}/click"))
+            .json(&json!({}))
+            .send()
+            .await?
+            .error_for_status()?;
+        element(&client, &session, "tbody tr time[datetime]").await?;
         let table = text(&client, &session, "table").await?;
         ensure!(
             table.contains("欠測")
