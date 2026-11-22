@@ -30,7 +30,7 @@ enum Action {
     Serve { config: PathBuf },
 }
 
-#[tokio::main]
+#[tokio::main(worker_threads = 1)]
 async fn main() -> Result<()> {
     match Cli::parse().command {
         Action::Discover { adapter } => {
