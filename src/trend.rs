@@ -213,6 +213,82 @@ mod tests {
     }
 
     #[test]
+    fn every_twelve_minute_reception_pattern_preserves_gaps_and_extrema() {
+        for mask in 0..1_u16 << 12 {
+            let rows: Vec<_> = (0..12)
+                .filter(|&m| mask & (1 << m) != 0)
+                .map(|m| sample(m, ((m * 37) % 101) as u8))
+                .collect();
+            let result =
+                group(rows.iter().copied().map(Ok::<_, ()>), 7, 300 * 12 * 60 + 7).unwrap();
+            let runs: Vec<_> = rows
+                .chunk_by(|a, b| b.received - a.received == 60)
+                .collect();
+            assert!(result.len() <= 4, "mask {mask}");
+            assert_eq!(
+                result.first().map(|b| b.first.at),
+                rows.first().map(|r| r.received)
+            );
+            assert_eq!(
+                result.last().map(|b| b.last.at),
+                rows.last().map(|r| r.received)
+            );
+            assert_eq!(
+                result.iter().map(|b| b.range.low.rh).min(),
+                rows.iter().map(|s| s.humidity).min()
+            );
+            assert_eq!(
+                result.iter().map(|b| b.range.high.rh).max(),
+                rows.iter().map(|s| s.humidity).max()
+            );
+            assert!(result.windows(2).all(|p| p[0].last.at < p[1].first.at));
+            for b in &result {
+                for point in [b.first, b.last, b.range.low, b.range.high] {
+                    assert!(
+                        rows.iter()
+                            .any(|r| r.received == point.at && r.humidity == point.rh)
+                    );
+                }
+                assert!(runs.iter().any(
+                    |r| r[0].received <= b.first.at && b.last.at <= r.last().unwrap().received
+                ));
+            }
+            if runs.len() <= 3 {
+                assert_eq!(result.len(), runs.len());
+                for (b, r) in result.iter().zip(runs) {
+                    assert_eq!(b.first.at, r[0].received);
+                    assert_eq!(b.last.at, r.last().unwrap().received);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn includes_both_edges_within_three_hundred_columns() {
+        for minutes in [299, 300, 301, 599, 600, 601, 1440] {
+            let rows = (0..=minutes).map(|m| Ok::<_, ()>(sample(m, 50)));
+            let bins = group(rows, 7, minutes * 60 + 7).unwrap();
+            assert!(bins.len() <= 300);
+            assert_eq!(bins[0].first.at, 7);
+            assert_eq!(bins.last().unwrap().last.at, minutes * 60 + 7);
+        }
+    }
+
+    #[test]
+    fn a_storage_error_anywhere_in_a_column_fails_the_chart() {
+        for position in 0..5 {
+            let rows = (0..5).map(|m| {
+                if m == position {
+                    Err("read failed")
+                } else {
+                    Ok(sample(m, 50))
+                }
+            });
+            assert_eq!(group(rows, 7, 300 * 10 * 60 + 7), Err("read failed"));
+        }
+    }
+
+    #[test]
     fn starts_chart_buckets_at_the_requested_utc_minute() {
         let start = 1_700_000_103;
         let rows = (0..10).map(|minute| {
