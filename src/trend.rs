@@ -50,7 +50,7 @@ mod tests {
 
     #[test]
     fn starts_chart_buckets_at_the_requested_utc_minute() {
-        let start = 1_700_000_043;
+        let start = 1_700_000_103;
         let rows = (0..10).map(|minute| {
             Ok::<_, ()>(Sample {
                 received: start + minute * 60,
