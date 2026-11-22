@@ -93,16 +93,20 @@ struct Bin {
     high: u8,
     first_rh: u8,
     last_rh: u8,
-    count: i64,
 }
 fn bins(store: &Store, start: i64, end: i64) -> Result<Vec<Bin>> {
     let width = ((end - start) / 60 / 300).max(1);
-    let mut stmt=store.db.prepare("WITH bins AS (
-        SELECT MIN(minute) first,MAX(minute) last,MIN(humidity) low,MAX(humidity) high,COUNT(*) count
-        FROM samples WHERE minute BETWEEN ?1/60 AND ?2/60 AND received BETWEEN ?1 AND ?2
-        GROUP BY (minute - ?1/60)/?3)
-        SELECT a.received,b.received,low,high,a.humidity,b.humidity,count FROM bins
-        JOIN samples a ON a.minute=bins.first JOIN samples b ON b.minute=bins.last ORDER BY bins.first")?;
+    let mut stmt = store.db.prepare(
+        "WITH readings AS (
+            SELECT minute, humidity, minute - ROW_NUMBER() OVER (ORDER BY minute) AS run
+            FROM samples WHERE minute BETWEEN ?1/60 AND ?2/60 AND received BETWEEN ?1 AND ?2
+        ), bins AS (
+            SELECT MIN(minute) first, MAX(minute) last, MIN(humidity) low, MAX(humidity) high
+            FROM readings GROUP BY (minute - ?1/60)/?3, run
+        )
+        SELECT a.received, b.received, low, high, a.humidity, b.humidity FROM bins
+        JOIN samples a ON a.minute=bins.first JOIN samples b ON b.minute=bins.last ORDER BY bins.first"
+    )?;
     Ok(stmt
         .query_map(params![start, end, width], |r| {
             Ok(Bin {
@@ -112,7 +116,6 @@ fn bins(store: &Store, start: i64, end: i64) -> Result<Vec<Bin>> {
                 high: r.get(3)?,
                 first_rh: r.get(4)?,
                 last_rh: r.get(5)?,
-                count: r.get(6)?,
             })
         })?
         .collect::<rusqlite::Result<_>>()?)
@@ -123,19 +126,14 @@ fn chart(data: &[Bin], start: i64, end: i64, config: &Config) -> Markup {
     let mut line = String::new();
     let mut previous = None;
     for b in data {
-        let contiguous = b.count == b.last / 60 - b.first / 60 + 1;
-        if (!contiguous || previous != Some(b.first / 60 - 1)) && !line.is_empty() {
+        if previous != Some(b.first / 60 - 1) && !line.is_empty() {
             runs.push(std::mem::take(&mut line));
         }
-        if contiguous {
-            let op = if line.is_empty() { "M" } else { "L" };
-            let (x, y) = coordinate(b.first, start, end, b.first_rh);
-            let (u, v) = coordinate(b.last, start, end, b.last_rh);
-            write!(line, "{op}{x:.2},{y:.1} L{u:.2},{v:.1} ").unwrap();
-            previous = Some(b.last / 60);
-        } else {
-            previous = None;
-        }
+        let op = if line.is_empty() { "M" } else { "L" };
+        let (x, y) = coordinate(b.first, start, end, b.first_rh);
+        let (u, v) = coordinate(b.last, start, end, b.last_rh);
+        write!(line, "{op}{x:.2},{y:.1} L{u:.2},{v:.1} ").unwrap();
+        previous = Some(b.last / 60);
     }
     if !line.is_empty() {
         runs.push(line);
@@ -150,7 +148,7 @@ fn chart(data: &[Bin], start: i64, end: i64, config: &Config) -> Markup {
             @for b in data{
                 @let (x,y)=coordinate(b.first,start,end,b.low);
                 @let (_,v)=coordinate(b.first,start,end,b.high);
-                @if b.count==b.last/60-b.first/60+1 && b.low!=b.high{line.extent x1=(x) x2=(x) y1=(y) y2=(v) {}}
+                @if b.low!=b.high {line.extent x1=(x) x2=(x) y1=(y) y2=(v) {}}
                 circle cx=(x) cy=(y) r="1.8"{}
                 @if b.low!=b.high{circle cx=(x) cy=(v) r="1.8"{}}
             }

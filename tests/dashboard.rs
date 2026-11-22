@@ -132,16 +132,18 @@ async fn mobile_browser_navigates_all_ranges_and_exposes_missing_history() -> Re
         );
         element(&client, &session, "svg[role='img']").await?;
         element(&client, &session, "svg .reference").await?;
-        if range == "24h" {
-            let pieces: Value = client
-                .post(format!("{session}/elements"))
-                .json(&json!({"using":"css selector","value":"svg path.series"}))
-                .send()
-                .await?
-                .json()
-                .await?;
-            assert_eq!(pieces["value"].as_array().unwrap().len(), 2);
-        }
+        let pieces: Value = client
+            .post(format!("{session}/elements"))
+            .json(&json!({"using":"css selector","value":"svg path.series"}))
+            .send()
+            .await?
+            .json()
+            .await?;
+        assert_eq!(
+            pieces["value"].as_array().unwrap().len(),
+            if range == "24h" { 2 } else { 3 },
+            "{range}"
+        );
     }
     client.delete(session).send().await?.error_for_status()?;
     Ok(())
