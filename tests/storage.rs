@@ -79,3 +79,25 @@ fn expiry_removes_samples_after_365_days_even_during_an_outage() -> anyhow::Resu
     assert_eq!(store.latest()?.unwrap().received, 61);
     Ok(())
 }
+
+#[test]
+fn disabling_delivery_preserves_the_outbox_and_only_records_new_measurements() -> anyhow::Result<()>
+{
+    let temp = tempfile::tempdir()?;
+    let path = temp.path().join("meter.sqlite");
+    let open = || Store::open(&path, MAC.parse().unwrap(), 0, POLICY, 365);
+    let mut store = open()?;
+    store.tick(600)?;
+    let original = store.pending()?.unwrap();
+    drop(store);
+    let mut recording = open()?.with_notifications(false);
+    recording.record(601, reading(45))?;
+    assert!(!recording.state()?.lost);
+    assert_eq!(recording.latest()?.unwrap().received, 601);
+    drop(recording);
+    let mut resumed = open()?;
+    assert_eq!(resumed.pending()?, Some(original));
+    resumed.acknowledge(original.0)?;
+    assert_eq!(resumed.pending()?, None);
+    Ok(())
+}

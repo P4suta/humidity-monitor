@@ -27,6 +27,7 @@ pub struct Store {
     pub(crate) db: Connection,
     policy: Policy,
     retention: i64,
+    notifications: bool,
 }
 
 impl Store {
@@ -65,7 +66,13 @@ impl Store {
             db,
             policy,
             retention: i64::from(retention_days) * 86400,
+            notifications: true,
         })
+    }
+
+    pub fn with_notifications(mut self, enabled: bool) -> Self {
+        self.notifications = enabled;
+        self
     }
 
     pub fn record(&mut self, now: i64, reading: Reading) -> Result<()> {
@@ -84,6 +91,9 @@ impl Store {
         }
         let mut next = state.clone();
         for event in next.advance(now, reading.map(Reading::humidity)) {
+            if !self.notifications {
+                continue;
+            }
             let kind = match event {
                 Event::High => "high",
                 Event::Normal => "normal",

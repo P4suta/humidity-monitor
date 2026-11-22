@@ -74,7 +74,9 @@ async fn serve(config: Config) -> Result<()> {
             config.retention_days,
         )
     };
-    let writer = Arc::new(Mutex::new(open()?));
+    let writer = Arc::new(Mutex::new(
+        open()?.with_notifications(config.ntfy.is_some()),
+    ));
     let reader = Arc::new(Mutex::new(open()?));
     let publisher = config
         .ntfy
@@ -122,12 +124,13 @@ async fn timers(db: &Database) -> Result<()> {
 }
 
 async fn deliver(db: &Database, publisher: Option<Publisher>) -> Result<()> {
+    let Some(publisher) = publisher else {
+        return std::future::pending().await;
+    };
     loop {
         let pending = lock(db)?.pending()?;
         if let Some((id, event, at)) = pending {
-            if let Some(publisher) = &publisher
-                && let Err(error) = publisher.send(event, at).await
-            {
+            if let Err(error) = publisher.send(event, at).await {
                 eprintln!("Notification {id} remains pending: {error}");
                 sleep(Duration::from_secs(15)).await;
                 continue;
