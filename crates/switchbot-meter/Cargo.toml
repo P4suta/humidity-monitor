@@ -2,7 +2,7 @@
 name = "switchbot-meter"
 version = "0.1.0"
 edition = "2024"
-license.workspace = true
-repository.workspace = true
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/P4suta/humidity-monitor"
 description = "Decode SwitchBot W3400010 readings and evaluate humidity thresholds"
 publish = false
