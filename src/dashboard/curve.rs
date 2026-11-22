@@ -28,7 +28,7 @@ fn slope(a: Vertex, b: Vertex) -> f64 {
 fn tangent(a: Vertex, b: Vertex, c: Vertex) -> f64 {
     let left = slope(a, b);
     let right = slope(b, c);
-    if left * right <= 0.0 {
+    if left.is_sign_positive() != right.is_sign_positive() {
         return 0.0;
     }
     let average = (left * (c.0 - b.0) + right * (b.0 - a.0)) / (c.0 - a.0);
@@ -106,6 +106,8 @@ mod tests {
         assert_eq!(tangent((0., 24.), (6., 6.), (9., 0.)), -7. / 3.);
         assert_eq!(tangent((0., 0.), (3., 3.), (6., 33.)), 2.);
         assert_eq!(tangent((0., 0.), (3., 30.), (6., 33.)), 2.);
+        assert_eq!(tangent((0., 1.), (1., 2.), (2., 2.)), 0.);
+        assert_eq!(tangent((0., 2.), (1., 2.), (2., 1.)), 0.);
         assert_eq!(
             path(&[(0., 3.), (3., 9.), (9., 3.)]),
             "M0.0000,3.000C1.0000,6.000 2.0000,9.000 3.0000,9.000C5.0000,9.000 7.0000,6.000 9.0000,3.000"
