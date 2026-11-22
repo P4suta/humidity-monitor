@@ -43,12 +43,13 @@ cargo run --locked -- serve monitor.toml
 
 Open the configured HTTP listener to see the last reading and four history periods.
 Use the optional top-level fields `reference = [45, 60]` and `dry_below = 30` to mark the reference band and identify dry readings.
-The chart breaks at missing minutes and includes a table of the recorded values.
-Long periods group measurements into at most 300 time intervals.
-The chart keeps the first and last continuous runs in each interval.
-When two or more runs lie between them, the chart marks their lowest and highest readings at the recorded times.
-The table retains individual minute readings.
-[W3C guidance for complex images](https://www.w3.org/WAI/tutorials/images/complex/)
+The chart fits the available recording period and groups measurements into at most 48 time intervals.
+Its smooth line passes through observed endpoints and extremes and stops at each missing minute.
+Dots mark isolated readings.
+The caption gives the lowest and highest humidity in the period.
+Open the measurement history to read twelve exact minute readings per page.
+Automatic refresh pauses while the table is open.
+[D3 monotone curves](https://d3js.org/d3-shape/curve#curveMonotoneX) · [W3C guidance for complex images](https://www.w3.org/WAI/tutorials/images/complex/)
 
 The receiver checks the model, address and data fields before advancing the reception time.
 It uses every valid reading for notifications and stores the first reading in each UTC minute for history.
