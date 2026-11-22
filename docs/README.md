@@ -44,7 +44,9 @@ cargo run --locked -- serve monitor.toml
 Open the configured HTTP listener to see the last reading and four history periods.
 Use the optional top-level fields `reference = [45, 60]` and `dry_below = 30` to mark the reference band and identify dry readings.
 The chart breaks at missing minutes and includes a table of the recorded values.
-Long periods group measurements by time and show their range.
+Long periods group measurements into at most 300 time intervals.
+The chart keeps the first and last continuous runs in each interval.
+When several runs lie between them, the chart marks their minimum and maximum at the recorded times.
 The table retains individual minute readings.
 [W3C guidance for complex images](https://www.w3.org/WAI/tutorials/images/complex/)
 

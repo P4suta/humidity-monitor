@@ -114,7 +114,12 @@ fn chart(data: &[Bin], start: i64, end: i64, config: &Config) -> Markup {
     html! {figure{
         svg viewBox="0 0 580 136" role="img" aria-labelledby="plot-title plot-desc" {
             title id="plot-title" {"相対湿度の推移"}
-            desc id="plot-desc" {"縦軸は相対湿度、横軸は受信時刻です。欠測区間で線が途切れます。測定値は履歴表で確認できます。"}
+            desc id="plot-desc" {
+                "縦軸は相対湿度、横軸は受信時刻です。"
+                "欠測区間で線が途切れます。"
+                "欠測が多い区間では途中の最小値と最大値を点で示します。"
+                "測定値は履歴表で確認できます。"
+            }
             @if let Some([lo,hi])=config.reference {rect.reference x="32" y=(118-hi) width="532" height=(hi-lo) {}}
             @for tick in [0,50,100]{line.grid x1="32" x2="564" y1=(118-tick) y2=(118-tick){} text x="26" y=(122-tick) text-anchor="end"{(tick)}}
             @for run in runs { @if let Some(line) = series(run, start, end) {path.series d=(line) {}} }
