@@ -3,6 +3,7 @@ mod config;
 mod dashboard;
 mod notify;
 mod store;
+mod trend;
 pub use config::{Config, valid_adapter};
 pub use dashboard::dashboard;
 pub use notify::Publisher;

@@ -66,19 +66,15 @@ fn lock(db: &Database) -> Result<std::sync::MutexGuard<'_, Store>> {
 async fn serve(config: Config) -> Result<()> {
     let mut terminate = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
     let now = unix_now()?;
-    let open = || {
-        Store::open(
-            &config.database,
-            config.address,
-            now,
-            config.policy,
-            config.retention_days,
-        )
-    };
-    let writer = Arc::new(Mutex::new(
-        open()?.with_notifications(config.ntfy.is_some()),
-    ));
-    let reader = Arc::new(Mutex::new(open()?));
+    let store = Store::open(
+        &config.database,
+        config.address,
+        now,
+        config.policy,
+        config.retention_days,
+    )?;
+    let reader = Arc::new(Mutex::new(store.clone()));
+    let writer = Arc::new(Mutex::new(store.with_notifications(config.ntfy.is_some())));
     let publisher = config
         .ntfy
         .as_ref()

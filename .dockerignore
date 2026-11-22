@@ -10,3 +10,5 @@
 !crates/switchbot-meter/src/**
 !crates/switchbot-meter/tests/
 !crates/switchbot-meter/tests/**
+!tests/
+!tests/**

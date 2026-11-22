@@ -25,7 +25,7 @@ The database directory must exist and be writable by the service account.
 ```toml
 address = "AA:BB:CC:DD:EE:FF"
 label = "Laboratory"
-database = "readings.sqlite"
+database = "readings.redb"
 listen = "127.0.0.1:8080"
 timezone = "UTC"
 retention_days = 365
@@ -53,13 +53,28 @@ It uses every valid reading for notifications and stores the first reading in ea
 A full missing minute interrupts confirmation of high humidity or its recovery.
 Recovery from reception loss requires a valid reading.
 
+## Upgrade and restore history
+
+Stop the receiver before upgrading.
+On first start, the receiver imports a neighboring `readings.sqlite` file into `readings.redb`.
+An existing configuration with a `.sqlite` filename opens the same basename with the `.redb` extension.
+For SQLite files with other names, the receiver appends `.redb` to the full filename.
+The import needs disk space for both databases.
+The receiver keeps the SQLite source and publishes the redb file after importing the complete history and pending notifications.
+Restarting after an interrupted import repeats the import from the source.
+
+To back up history, stop the receiver, copy the redb file to separate storage and restart the receiver.
+To restore, stop the receiver and point `database` to a separate copy of the backup.
+Start the receiver with the original meter address and check the last reception and history on the dashboard.
+Archive the original SQLite database together with its `-wal` file when a write-ahead log is present.
+
 ## Send notifications
 
 Add an optional `[ntfy]` section with `url` set to the topic URL and `token_file` set to the path of a dedicated publisher token.
 Give the publisher write access to the selected topic.
 [ntfy access control](https://docs.ntfy.sh/config/#access-control)
 
-SQLite stores each transition and its pending notification together.
+A redb transaction stores each transition and its pending notification together.
 Delivery retries keep their original order across restarts.
 A restart after the server accepts a message and before the local acknowledgement can repeat a notification.
 
@@ -72,5 +87,7 @@ Set `CHROMEDRIVER` when the driver is outside the executable search path.
 ```sh
 mise x -- just check
 mise x -- just mutation
+mise x -- just storage-mutation
+mise x -- just storage-endurance
 podman build -f Containerfile -t localhost/humidity-monitor:installed .
 ```

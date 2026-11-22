@@ -2,3 +2,5 @@
 /mutants.out*/
 .local/
 *.sqlite*
+*.redb
+*.humidity-stage/

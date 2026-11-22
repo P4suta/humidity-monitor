@@ -1,6 +1,18 @@
-FROM docker.io/library/rust:1.100.0-trixie@sha256:223cc32ddca8f3ee90c436dbc94b6b5f052ea7f9653c5201e9612f08ad7d21b8
+FROM docker.io/library/rust:1.100.0-trixie@sha256:223cc32ddca8f3ee90c436dbc94b6b5f052ea7f9653c5201e9612f08ad7d21b8 AS tools
 RUN cargo install --locked cargo-mutants@27.1.0
+
+FROM tools AS meter
 WORKDIR /meter
 COPY crates/switchbot-meter/Cargo.toml Cargo.toml
 COPY crates/switchbot-meter/src src
 COPY crates/switchbot-meter/tests tests
+
+FROM tools AS storage
+WORKDIR /source
+ENV CARGO_TARGET_DIR=/opt/mutation-target CARGO_PROFILE_TEST_DEBUG=0 CARGO_BUILD_JOBS=2
+COPY Cargo.toml Cargo.lock ./
+COPY crates/switchbot-meter crates/switchbot-meter
+COPY src src
+COPY tests tests
+RUN cargo test --locked --no-run --lib --test storage --test storage_upgrade
+ENV CARGO_NET_OFFLINE=true

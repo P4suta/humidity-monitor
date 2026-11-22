@@ -53,7 +53,9 @@ impl Publisher {
             Event::Lost => "受信途絶",
             Event::Received => "受信再開",
         };
-        let time = jiff::Timestamp::from_second(at)?;
+        let time = jiff::Timestamp::from_second(at)
+            .map(|t| t.to_string())
+            .unwrap_or_else(|_| format!("Unix {at}"));
         let response = self
             .client
             .post(self.url.clone())
