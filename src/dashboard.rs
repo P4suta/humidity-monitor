@@ -77,7 +77,13 @@ fn date(at: i64, config: &Config) -> String {
                 .strftime("%Y-%m-%d %H:%M:%S")
                 .to_string()
         })
-        .unwrap_or_default()
+        .unwrap_or_else(|_| format!("Unix {at}"))
+}
+fn time(at: i64, config: &Config) -> Markup {
+    let utc = jiff::Timestamp::from_second(at)
+        .ok()
+        .map(|timestamp| timestamp.to_string());
+    html! { time datetime=[utc] {(date(at,config))} }
 }
 fn coordinate(at: i64, start: i64, end: i64, rh: u8) -> (f64, f64) {
     (
@@ -152,7 +158,7 @@ fn page(app: &App, view: View) -> Result<Markup> {
             p.metric{span.caption{"相対湿度"} @if let Some(r)=&current{(r.humidity) small{"％"}}@else{"—"}}
             @if stale {p.status{"受信途絶"}} @else if current.is_none(){p.status{"受信待ち"}}
             @if let Some(r)=&current {
-                p{"最終受信 " time{(date(r.received,c))} " " (c.timezone.iana_name().unwrap_or("UTC"))}
+                p{"最終受信 " (time(r.received,c)) " " (c.timezone.iana_name().unwrap_or("UTC"))}
                 p.detail{(format!("{:.1}",f64::from(r.tenths_c)/10.0)) " ℃　電池 " (r.battery) "％"
                     @if c.dry_below.is_some_and(|limit|r.humidity<limit){"　乾燥"}
                     @if state.high{"　高湿度"}
@@ -171,7 +177,7 @@ fn page(app: &App, view: View) -> Result<Markup> {
                 thead{tr{th scope="col"{"受信時刻"}th scope="col"{"相対湿度"}}}
                 tbody{@for (i,r) in rows.iter().take(60).enumerate(){
                     @if i==0 && end/60-r.received/60>1 || i>0 && rows[i-1].received/60-r.received/60>1 {tr.gap{td colspan="2"{"欠測"}}}
-                    tr{td{(date(r.received,c))}td{(r.humidity)"％"}}
+                    tr{td{(time(r.received,c))}td{(r.humidity)"％"}}
                 }}
             }
             @if rows.len()>60{a.more href=(format!("/?period={key}&before={}",rows[59].received)){"以前の測定値"}}

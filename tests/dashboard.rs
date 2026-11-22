@@ -106,6 +106,22 @@ async fn mobile_browser_navigates_all_ranges_and_exposes_missing_history() -> Re
             && status.contains("乾燥")
             && status.contains("最終受信")
     );
+    let stamp = element(&client, &session, "#current time[datetime]").await?;
+    let stamp: Value = client
+        .get(format!("{session}/element/{stamp}/attribute/datetime"))
+        .send()
+        .await?
+        .json()
+        .await?;
+    assert_eq!(
+        stamp["value"]
+            .as_str()
+            .unwrap()
+            .parse::<jiff::Timestamp>()?
+            .as_second(),
+        now - 1140
+    );
+    element(&client, &session, "tbody tr time[datetime]").await?;
     for (range, label) in [
         ("24h", "24時間"),
         ("7d", "7日"),
