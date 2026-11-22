@@ -1,10 +1,15 @@
-use std::path::Path;
+use std::{path::Path, sync::Arc};
 
-use anyhow::{Result, ensure};
-use rusqlite::{Connection, OptionalExtension, Row, params};
+use anyhow::{Context, Result, ensure};
+use redb::{Database, ReadTransaction, ReadableDatabase, ReadableTable, WriteTransaction};
 use switchbot_meter::{Address, AlertState, Event, Policy, Reading};
 
-#[derive(Debug, Eq, PartialEq)]
+mod files;
+mod legacy;
+mod schema;
+use schema::*;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Sample {
     pub received: i64,
     pub tenths_c: i16,
@@ -12,19 +17,9 @@ pub struct Sample {
     pub battery: u8,
 }
 
-impl Sample {
-    pub(crate) fn row(row: &Row<'_>) -> rusqlite::Result<Self> {
-        Ok(Self {
-            received: row.get(0)?,
-            tenths_c: row.get(1)?,
-            humidity: row.get(2)?,
-            battery: row.get(3)?,
-        })
-    }
-}
-
+#[derive(Clone)]
 pub struct Store {
-    pub(crate) db: Connection,
+    db: Arc<Database>,
     policy: Policy,
     retention: i64,
     notifications: bool,
@@ -52,28 +47,9 @@ impl Store {
             "invalid retention or start time"
         );
         require_database_file(path)?;
-        let mut db = Connection::open(path)?;
-        db.pragma_update(None, "journal_mode", "WAL")?;
-        let tx = db.transaction()?;
-        tx.execute_batch("CREATE TABLE IF NOT EXISTS monitor (
-            id INTEGER PRIMARY KEY CHECK(id=1), address TEXT NOT NULL, started INTEGER NOT NULL,
-            received INTEGER, temperature INTEGER, humidity INTEGER, battery INTEGER,
-            pending_since INTEGER, high INTEGER NOT NULL DEFAULT 0, lost INTEGER NOT NULL DEFAULT 0);
-            CREATE TABLE IF NOT EXISTS samples (minute INTEGER PRIMARY KEY, received INTEGER NOT NULL,
-                temperature INTEGER NOT NULL, humidity INTEGER NOT NULL, battery INTEGER NOT NULL);
-            CREATE TABLE IF NOT EXISTS outbox (id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL, at INTEGER NOT NULL);")?;
-        tx.execute(
-            "INSERT OR IGNORE INTO monitor(id,address,started) VALUES(1,?1,?2)",
-            params![address.to_string(), now],
-        )?;
-        let stored: String = tx.query_row("SELECT address FROM monitor", [], |r| r.get(0))?;
-        ensure!(
-            stored == address.to_string(),
-            "database belongs to a different meter"
-        );
-        tx.commit()?;
+        let db = files::open(path, address, now)?;
         Ok(Self {
-            db,
+            db: Arc::new(db),
             policy,
             retention: i64::from(retention_days) * 86400,
             notifications: true,
@@ -93,110 +69,157 @@ impl Store {
         self.advance(now, None)
     }
 
-    fn advance(&mut self, now: i64, reading: Option<Reading>) -> Result<()> {
-        let tx = self.db.transaction()?;
-        let state = Self::load(&tx, self.policy)?;
-        if now < state.received.unwrap_or(state.started) {
-            return Ok(());
+    fn advance(&self, now: i64, reading: Option<Reading>) -> Result<()> {
+        let tx = self.db.begin_write()?;
+        if self.stage(&tx, now, reading)? {
+            tx.commit()?;
         }
-        let mut next = state.clone();
-        for event in next.advance(now, reading.map(Reading::humidity)) {
-            if !self.notifications {
-                continue;
-            }
-            let kind = match event {
-                Event::High => "high",
-                Event::Normal => "normal",
-                Event::Lost => "lost",
-                Event::Received => "received",
-            };
-            tx.execute(
-                "INSERT INTO outbox(kind,at) VALUES(?1,?2)",
-                params![kind, now],
-            )?;
-        }
-        if let Some(value) = reading {
-            let fields = params![now, value.tenths_c(), value.humidity(), value.battery()];
-            tx.execute("INSERT OR IGNORE INTO samples(minute,received,temperature,humidity,battery) VALUES(?1/60,?1,?2,?3,?4)",fields)?;
-            tx.execute(
-                "UPDATE monitor SET received=?1,temperature=?2,humidity=?3,battery=?4 WHERE id=1",
-                fields,
-            )?;
-        }
-        if next.pending_since != state.pending_since
-            || next.high != state.high
-            || next.lost != state.lost
-        {
-            tx.execute(
-                "UPDATE monitor SET pending_since=?1,high=?2,lost=?3 WHERE id=1",
-                params![next.pending_since, next.high, next.lost],
-            )?;
-        }
-        let cutoff = now.saturating_sub(self.retention);
-        tx.execute(
-            "DELETE FROM samples WHERE minute <= ?1/60 AND received < ?1",
-            [cutoff],
-        )?;
-        tx.commit()?;
         Ok(())
     }
 
-    fn load(db: &Connection, policy: Policy) -> rusqlite::Result<AlertState> {
-        db.query_row(
-            "SELECT started,received,pending_since,high,lost FROM monitor WHERE id=1",
-            [],
-            |r| {
-                Ok(AlertState {
-                    policy,
-                    started: r.get(0)?,
-                    received: r.get(1)?,
-                    pending_since: r.get(2)?,
-                    high: r.get(3)?,
-                    lost: r.get(4)?,
-                })
-            },
-        )
+    fn stage(&self, tx: &WriteTransaction, now: i64, reading: Option<Reading>) -> Result<bool> {
+        let mut states = tx.open_table(STATE)?;
+        let mut latest = tx.open_table(LATEST)?;
+        let mut checkpoint = Checkpoint::load(
+            states.get(())?.map(|v| v.value()),
+            latest.get(())?.map(|v| v.value()),
+            self.policy,
+        )?;
+        if now
+            < checkpoint
+                .state
+                .received
+                .unwrap_or(checkpoint.state.started)
+        {
+            return Ok(false);
+        }
+        let previous = checkpoint.fields();
+        let events = checkpoint
+            .state
+            .advance(now, reading.map(Reading::humidity));
+        if self.notifications && !events.is_empty() {
+            let mut outbox = tx.open_table(OUTBOX)?;
+            for event in events {
+                checkpoint.sequence = checkpoint
+                    .sequence
+                    .checked_add(1)
+                    .context("notification sequence exhausted")?;
+                outbox.insert(checkpoint.sequence, (event_number(event), now))?;
+            }
+        }
+        let state_changed = previous != checkpoint.fields();
+        if state_changed {
+            states.insert((), checkpoint.fields())?;
+        }
+        let mut samples = tx.open_table(SAMPLES)?;
+        if let Some(value) = reading {
+            let sample = (now, value.tenths_c(), value.humidity(), value.battery());
+            if let redb::Entry::Vacant(entry) = samples.entry(now / 60)? {
+                entry.insert(sample)?;
+            }
+            latest.insert((), sample)?;
+        }
+        let cutoff = now.saturating_sub(self.retention);
+        let expired = samples.first()?.is_some_and(|(_, v)| v.value().0 < cutoff);
+        if expired {
+            samples.retain_in(..=cutoff / 60, |_, sample| sample.0 >= cutoff)?;
+        }
+        Ok(state_changed || reading.is_some() || expired)
+    }
+
+    pub(crate) fn snapshot(&self) -> Result<Snapshot> {
+        Ok(Snapshot {
+            tx: self.db.begin_read()?,
+            policy: self.policy,
+        })
     }
 
     pub fn state(&self) -> Result<AlertState> {
-        Ok(Self::load(&self.db, self.policy)?)
+        self.snapshot()?.state()
     }
-
     pub fn latest(&self) -> Result<Option<Sample>> {
-        Ok(self.db.query_row("SELECT received,temperature,humidity,battery FROM monitor WHERE received IS NOT NULL",[],Sample::row).optional()?)
+        self.snapshot()?.latest()
     }
-
     pub fn history(&self, start: i64, end: i64, limit: u32) -> Result<Vec<Sample>> {
-        let mut stmt = self.db.prepare("SELECT received,temperature,humidity,battery FROM samples
-            WHERE minute BETWEEN ?1/60 AND ?2/60 AND received>=?1 AND received<?2 ORDER BY minute DESC LIMIT ?3")?;
-        Ok(stmt
-            .query_map(params![start, end, limit], Sample::row)?
-            .collect::<rusqlite::Result<_>>()?)
+        self.snapshot()?.history(start, end, limit)
     }
 
     pub fn pending(&self) -> Result<Option<(i64, Event, i64)>> {
-        Ok(self
-            .db
-            .query_row(
-                "SELECT id,kind,at FROM outbox ORDER BY id LIMIT 1",
-                [],
-                |r| {
-                    let kind: String = r.get(1)?;
-                    let event = match kind.as_str() {
-                        "high" => Event::High,
-                        "normal" => Event::Normal,
-                        "lost" => Event::Lost,
-                        "received" => Event::Received,
-                        _ => return Err(rusqlite::Error::InvalidQuery),
-                    };
-                    Ok((r.get(0)?, event, r.get(2)?))
-                },
-            )
-            .optional()?)
+        let tx = self.db.begin_read()?;
+        let table = tx.open_table(OUTBOX)?;
+        table
+            .first()?
+            .map(|(key, value)| {
+                let (number, at) = value.value();
+                Ok((key.value(), event_from_number(number)?, at))
+            })
+            .transpose()
     }
 
     pub fn acknowledge(&mut self, id: i64) -> Result<()> {
-        self.db.execute("DELETE FROM outbox WHERE id=?1", [id])?;
+        let tx = self.db.begin_write()?;
+        let removed = tx.open_table(OUTBOX)?.remove(id)?.is_some();
+        if removed {
+            tx.commit()?;
+        }
         Ok(())
+    }
+}
+
+pub(crate) struct Snapshot {
+    tx: ReadTransaction,
+    policy: Policy,
+}
+
+impl Snapshot {
+    pub(crate) fn state(&self) -> Result<AlertState> {
+        let raw = self.tx.open_table(STATE)?.get(())?.map(|v| v.value());
+        let latest = self.tx.open_table(LATEST)?.get(())?.map(|v| v.value());
+        Ok(Checkpoint::load(raw, latest, self.policy)?.state)
+    }
+
+    pub(crate) fn latest(&self) -> Result<Option<Sample>> {
+        Ok(self
+            .tx
+            .open_table(LATEST)?
+            .get(())?
+            .map(|v| Sample::from_fields(v.value())))
+    }
+
+    pub(crate) fn history(&self, start: i64, end: i64, limit: u32) -> Result<Vec<Sample>> {
+        if start >= end || limit == 0 {
+            return Ok(Vec::new());
+        }
+        let samples = self.tx.open_table(SAMPLES)?;
+        let mut rows = Vec::new();
+        for entry in samples.range(start / 60..=end / 60)?.rev() {
+            let sample = Sample::from_fields(entry?.1.value());
+            if (start..end).contains(&sample.received) {
+                rows.push(sample);
+                if rows.len() == limit as usize {
+                    break;
+                }
+            }
+        }
+        Ok(rows)
+    }
+
+    pub(crate) fn bins(&self, start: i64, end: i64) -> Result<Vec<crate::trend::Bin>> {
+        if start > end {
+            return Ok(Vec::new());
+        }
+        let samples = self.tx.open_table(SAMPLES)?;
+        let rows = samples
+            .range(start / 60..=end / 60)?
+            .filter_map(|entry| match entry {
+                Ok((_, value)) => {
+                    let sample = Sample::from_fields(value.value());
+                    (start..=end)
+                        .contains(&sample.received)
+                        .then_some(Ok(sample))
+                }
+                Err(error) => Some(Err(error)),
+            });
+        Ok(crate::trend::group(rows, start, end)?)
     }
 }

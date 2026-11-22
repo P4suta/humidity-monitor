@@ -8,7 +8,6 @@ use axum::{
     routing::get,
 };
 use maud::{DOCTYPE, Markup, html};
-use rusqlite::params;
 use serde::Deserialize;
 use std::{
     fmt::Write,
@@ -86,14 +85,6 @@ fn coordinate(at: i64, start: i64, end: i64, rh: u8) -> (f64, f64) {
         118.0 - f64::from(rh),
     )
 }
-fn bins(store: &Store, start: i64, end: i64) -> Result<Vec<Bin>> {
-    let mut query = store.db.prepare(
-        "SELECT received,temperature,humidity,battery FROM samples
-         WHERE minute BETWEEN ?1/60 AND ?2/60 AND received BETWEEN ?1 AND ?2 ORDER BY minute",
-    )?;
-    let rows = query.query_map(params![start, end], crate::Sample::row)?;
-    Ok(crate::trend::group(rows, start, end)?)
-}
 
 fn chart(data: &[Bin], start: i64, end: i64, config: &Config) -> Markup {
     let mut runs = Vec::new();
@@ -141,10 +132,11 @@ fn page(app: &App, view: View) -> Result<Markup> {
     let db = app
         .store
         .lock()
-        .map_err(|_| anyhow::anyhow!("database unavailable"))?;
+        .map_err(|_| anyhow::anyhow!("database unavailable"))?
+        .snapshot()?;
     let current = db.latest()?;
     let state = db.state()?;
-    let data = bins(&db, start, now)?;
+    let data = db.bins(start, now)?;
     let end = view.before.unwrap_or(now + 1).clamp(start, now + 1);
     let rows = db.history(start, end, 61)?;
     drop(db);
