@@ -1,0 +1,12 @@
+**
+!Cargo.toml
+!Cargo.lock
+!src/
+!src/**
+!crates/
+!crates/switchbot-meter/
+!crates/switchbot-meter/Cargo.toml
+!crates/switchbot-meter/src/
+!crates/switchbot-meter/src/**
+!crates/switchbot-meter/tests/
+!crates/switchbot-meter/tests/**
