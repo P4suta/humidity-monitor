@@ -46,15 +46,21 @@ fn restart_keeps_minute_history_live_reception_and_pending_notifications() -> an
     store.record(3001, reading(40))?;
     store.acknowledge(lost)?;
     assert_eq!(store.pending()?.unwrap().1, Event::Received);
+    assert!(Store::open(&path, address, 3002, POLICY, 365).is_err());
+    drop(store);
+    let error = Store::open(
+        &path,
+        "AA:BB:CC:DD:EE:01".parse().unwrap(),
+        3002,
+        POLICY,
+        365,
+    )
+    .err()
+    .expect("accepted a different meter");
     assert!(
-        Store::open(
-            &path,
-            "AA:BB:CC:DD:EE:01".parse().unwrap(),
-            3002,
-            POLICY,
-            365
-        )
-        .is_err()
+        error
+            .to_string()
+            .contains("database belongs to a different meter")
     );
     Ok(())
 }
