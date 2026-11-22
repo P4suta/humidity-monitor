@@ -1,0 +1,13 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["github>P4suta/renovate-config"],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["verification/Containerfile.mutations"],
+      "matchStrings": ["cargo install --locked cargo-mutants@(?<currentValue>[0-9.]+)"],
+      "depNameTemplate": "cargo-mutants",
+      "datasourceTemplate": "crate"
+    }
+  ]
+}

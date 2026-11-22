@@ -1,0 +1,6 @@
+FROM docker.io/library/rust:1.100.0-trixie@sha256:223cc32ddca8f3ee90c436dbc94b6b5f052ea7f9653c5201e9612f08ad7d21b8
+RUN cargo install --locked cargo-mutants@27.1.0
+WORKDIR /meter
+COPY crates/switchbot-meter/Cargo.toml Cargo.toml
+COPY crates/switchbot-meter/src src
+COPY crates/switchbot-meter/tests tests

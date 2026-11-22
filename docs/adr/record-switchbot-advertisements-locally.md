@@ -2,7 +2,7 @@
 date: 2026-11-22
 ---
 
-# Record SwitchBot advertisements locally
+# Record meter advertisements locally
 
 ## Status
 
@@ -17,7 +17,7 @@ The W3400010 broadcasts humidity, temperature and battery level in its Bluetooth
 ## Decision
 
 Decode advertisements from one registered address in Rust using the BlueZ system bus.
-Keep minute samples, the last valid reception and pending notifications in SQLite.
+Keep minute samples, the last valid reception, and pending notifications in SQLite.
 Read thresholds and notification destinations from deployment configuration.
 [BlueZ Adapter API](https://bluez.readthedocs.io/en/latest/adapter-api/)
 
