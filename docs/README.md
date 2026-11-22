@@ -57,8 +57,8 @@ Recovery from reception loss requires a valid reading.
 
 Stop the receiver before upgrading.
 On first start, the receiver imports a neighboring `readings.sqlite` file into `readings.redb`.
-An existing configuration that names `readings.sqlite` also opens the new file.
-For a custom SQLite filename, the receiver appends `.redb` to the filename.
+An existing configuration with a `.sqlite` filename opens the same basename with the `.redb` extension.
+For SQLite files with other names, the receiver appends `.redb` to the full filename.
 The import needs disk space for both databases.
 The receiver keeps the SQLite source and publishes the redb file after importing the complete history and pending notifications.
 Restarting after an interrupted import repeats the import from the source.
