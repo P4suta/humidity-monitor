@@ -51,7 +51,7 @@ fn stopped_writer() -> Result<()> {
 }
 
 fn wait_for_kill() -> Result<()> {
-    println!("METER_WRITER_READY");
+    println!("\nMETER_WRITER_READY");
     io::stdout().flush()?;
     loop {
         thread::park();
@@ -65,7 +65,12 @@ fn killed_writer_recovers_an_entire_commit_at_either_boundary() -> Result<()> {
         let path = dir.path().join("meter.redb");
         open(&path)?.record(1, reading(45))?;
         let mut child = Command::new(env::current_exe()?)
-            .args(["--exact", "store::recovery::stopped_writer", "--nocapture"])
+            .args([
+                "--exact",
+                "store::recovery::stopped_writer",
+                "--nocapture",
+                "--test-threads=1",
+            ])
             .env("METER_CRASH_TEST_PATH", &path)
             .env("METER_CRASH_TEST_POINT", point)
             .stdout(Stdio::piped())
