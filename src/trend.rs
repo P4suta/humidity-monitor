@@ -49,6 +49,26 @@ mod tests {
     use super::*;
 
     #[test]
+    fn starts_chart_buckets_at_the_requested_utc_minute() {
+        let start = 1_700_000_043;
+        let rows = (0..10).map(|minute| {
+            Ok::<_, ()>(Sample {
+                received: start + minute * 60,
+                humidity: 50,
+                tenths_c: 200,
+                battery: 99,
+            })
+        });
+        let bins = group(rows, start, start + 300 * 7 * 60).unwrap();
+        assert_eq!(bins.len(), 2);
+        assert_eq!((bins[0].first, bins[0].last), (start, start + 6 * 60));
+        assert_eq!(
+            (bins[1].first, bins[1].last),
+            (start + 7 * 60, start + 9 * 60)
+        );
+    }
+
+    #[test]
     fn splits_gaps_and_bucket_boundaries_without_losing_extrema_or_endpoints() {
         let rows = [
             (60, 45),
