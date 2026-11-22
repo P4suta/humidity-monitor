@@ -143,6 +143,63 @@ fn failed_imports_preserve_the_source_and_never_publish_partial_history() -> Res
 }
 
 #[test]
+fn opens_the_published_redb_layout_and_refuses_an_unknown_format() -> Result<()> {
+    use redb::TableDefinition;
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("archived.redb");
+    let meter: TableDefinition<(), (u8, &str)> = TableDefinition::new("meter");
+    let current: TableDefinition<(), (i64, i16, u8, u8)> = TableDefinition::new("latest");
+    let minutes: TableDefinition<i64, (i64, i16, u8, u8)> = TableDefinition::new("minute_samples");
+    let state: TableDefinition<(), (i64, Option<i64>, bool, bool, i64)> =
+        TableDefinition::new("monitor_state");
+    let notices: TableDefinition<i64, (u8, i64)> = TableDefinition::new("pending_notifications");
+    let db = redb::Database::create(&path)?;
+    let tx = db.begin_write()?;
+    tx.open_table(meter)?.insert((), (2, ADDRESS))?;
+    tx.open_table(current)?.insert((), (125, -7, 56, 98))?;
+    tx.open_table(minutes)?.insert(2, (121, -8, 55, 99))?;
+    tx.open_table(state)?
+        .insert((), (0, Some(120), true, false, 48))?;
+    for (id, tag) in [(41, 0), (42, 1), (43, 2), (44, 3)] {
+        tx.open_table(notices)?.insert(id, (tag, 65))?;
+    }
+    tx.commit()?;
+    drop(db);
+    let error = open(&path).err().expect("accepted an unknown format");
+    assert!(
+        error
+            .to_string()
+            .contains("unsupported meter history format")
+    );
+    let db = redb::Database::open(&path)?;
+    let tx = db.begin_write()?;
+    tx.open_table(meter)?.insert((), (1, ADDRESS))?;
+    tx.commit()?;
+    drop(db);
+    let mut store = open(&path)?;
+    let row = store.history(120, 126, 1)?[0];
+    assert_eq!(
+        (row.received, row.tenths_c, row.humidity, row.battery),
+        (121, -8, 55, 99)
+    );
+    assert_eq!(store.latest()?.unwrap().received, 125);
+    assert!(store.state()?.high);
+    assert_eq!(store.state()?.pending_since, Some(120));
+    for (id, event) in [
+        (41, Event::High),
+        (42, Event::Normal),
+        (43, Event::Lost),
+        (44, Event::Received),
+    ] {
+        assert_eq!(store.pending()?, Some((id, event, 65)));
+        store.acknowledge(id)?;
+    }
+    store.tick(725)?;
+    assert_eq!(store.pending()?, Some((49, Event::Lost, 725)));
+    Ok(())
+}
+
+#[test]
 fn damaged_destinations_never_trigger_an_empty_store_or_a_second_import() -> Result<()> {
     let dir = tempfile::tempdir()?;
     let old = dir.path().join("readings.sqlite");
