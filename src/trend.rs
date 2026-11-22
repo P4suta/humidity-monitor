@@ -1,6 +1,6 @@
 use crate::Sample;
 
-const COLUMNS: i64 = 300;
+const COLUMNS: i64 = 48;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct Point {
@@ -177,7 +177,7 @@ mod tests {
             (13, 43),
         ];
         let rows = points.into_iter().map(|(m, h)| Ok::<_, ()>(sample(m, h)));
-        let bins = group(rows, 0, 300 * 20 * 60).unwrap();
+        let bins = group(rows, 0, COLUMNS * 20 * 60).unwrap();
         assert_eq!(
             bounds(&bins),
             [
@@ -196,7 +196,7 @@ mod tests {
             .step_by(2)
             .map(|m| Ok::<_, ()>(sample(m, (m % 101) as u8)));
         let bins = group(rows, 7, last * 60 + 7).unwrap();
-        assert!(bins.len() <= 300 * 4, "{} chart entries", bins.len());
+        assert!(bins.len() <= 48 * 4, "{} chart entries", bins.len());
         assert_eq!(bins.first().unwrap().first.at, 7);
         assert_eq!(bins.last().unwrap().last.at, last * 60 + 7);
         assert!(bins.iter().all(|b| b.first == b.last));
@@ -205,7 +205,7 @@ mod tests {
     #[test]
     fn a_constant_interior_range_has_one_marker_at_an_observed_time() {
         let rows = [0, 3, 5, 7, 9].map(|m| Ok::<_, ()>(sample(m, 50)));
-        let bins = group(rows.into_iter(), 0, 300 * 10 * 60).unwrap();
+        let bins = group(rows.into_iter(), 0, COLUMNS * 10 * 60).unwrap();
         assert_eq!(
             bounds(&bins),
             [(0, 0, 50, 50), (3, 3, 50, 50), (9, 9, 50, 50)]
@@ -220,7 +220,7 @@ mod tests {
                 .map(|m| sample(m, ((m * 37) % 101) as u8))
                 .collect();
             let result =
-                group(rows.iter().copied().map(Ok::<_, ()>), 7, 300 * 12 * 60 + 7).unwrap();
+                group(rows.iter().copied().map(Ok::<_, ()>), 7, COLUMNS * 12 * 60 + 7).unwrap();
             let runs: Vec<_> = rows
                 .chunk_by(|a, b| b.received - a.received == 60)
                 .collect();
@@ -264,11 +264,11 @@ mod tests {
     }
 
     #[test]
-    fn includes_both_edges_within_three_hundred_columns() {
-        for minutes in [299, 300, 301, 599, 600, 601, 1440] {
+    fn includes_both_edges_within_forty_eight_intervals() {
+        for minutes in [47, 48, 49, 95, 96, 97, 1440] {
             let rows = (0..=minutes).map(|m| Ok::<_, ()>(sample(m, 50)));
             let bins = group(rows, 7, minutes * 60 + 7).unwrap();
-            assert!(bins.len() <= 300);
+            assert!(bins.len() <= 48);
             assert_eq!(bins[0].first.at, 7);
             assert_eq!(bins.last().unwrap().last.at, minutes * 60 + 7);
         }
@@ -284,7 +284,7 @@ mod tests {
                     Ok(sample(m, 50))
                 }
             });
-            assert_eq!(group(rows, 7, 300 * 10 * 60 + 7), Err("read failed"));
+            assert_eq!(group(rows, 7, COLUMNS * 10 * 60 + 7), Err("read failed"));
         }
     }
 
@@ -299,7 +299,7 @@ mod tests {
                 battery: 99,
             })
         });
-        let bins = group(rows, start, start + 300 * 7 * 60).unwrap();
+        let bins = group(rows, start, start + COLUMNS * 7 * 60).unwrap();
         assert_eq!(bins.len(), 2);
         assert_eq!((bins[0].first.at, bins[0].last.at), (start, start + 6 * 60));
         assert_eq!(
@@ -328,7 +328,7 @@ mod tests {
                 battery: 100,
             })
         });
-        let result = group(rows.into_iter(), 60, 60 + 300 * 6 * 60).unwrap();
+        let result = group(rows.into_iter(), 60, 60 + COLUMNS * 6 * 60).unwrap();
         let actual: Vec<_> = result
             .iter()
             .map(|b| {

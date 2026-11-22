@@ -228,7 +228,7 @@ mod tests {
                 })
             });
         let end = 532 * 60;
-        let bins = trend::group(rows, 0, end).unwrap();
+        let bins = trend::group(rows, 0, 96 * 60).unwrap();
         assert_eq!(
             series(&bins, 0, end).as_deref().map(str::trim_end),
             Some("M32.00,68.0 L33.00,66.0 L34.00,72.0 L35.00,71.0 L36.00,67.0"),

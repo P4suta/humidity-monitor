@@ -158,7 +158,7 @@ async fn intermittent_year_bounds_the_http_response_and_keeps_exact_history_page
             assert!(!body.contains("<path class=\"series\""));
             let markers = body.matches("<circle ").count();
             assert!(
-                (300..=1200).contains(&markers),
+                (48..=192).contains(&markers),
                 "{markers} extrema and endpoints"
             );
             let (_, table) = body.split_once("<tbody>").unwrap();
