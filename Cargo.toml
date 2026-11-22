@@ -1,0 +1,37 @@
+[workspace]
+members = ["crates/switchbot-meter"]
+resolver = "3"
+
+[package]
+name = "humidity-monitor"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+anyhow = "1"
+axum = "0.8"
+chrono = { version = "0.4", default-features = false, features = ["std"] }
+chrono-tz = "0.10"
+switchbot-meter = { path = "crates/switchbot-meter" }
+futures-util = "0.3"
+maud = "0.27"
+reqwest = { version = "0.12", default-features = false, features = [
+  "rustls-tls",
+  "json",
+] }
+rusqlite = { version = "0.43", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+toml = "1"
+tokio = { version = "1", features = [
+  "macros",
+  "rt-multi-thread",
+  "net",
+  "time",
+  "signal",
+] }
+zbus = { version = "5", default-features = false, features = ["tokio"] }
+
+[dev-dependencies]
+serde_json = "1"
+tempfile = "3"
