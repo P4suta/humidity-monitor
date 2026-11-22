@@ -60,9 +60,7 @@ async fn failed_delivery_keeps_the_transition_and_retry_uses_bearer_auth() -> an
         .route(
             "/test-topic",
             post(
-                |State(calls): State<Requests>,
-                 headers: HeaderMap,
-                 body: String| async move {
+                |State(calls): State<Requests>, headers: HeaderMap, body: String| async move {
                     let mut calls = calls.lock().unwrap();
                     calls.push((headers["authorization"].to_str().unwrap().to_owned(), body));
                     if calls.len() == 1 {

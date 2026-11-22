@@ -1,0 +1,39 @@
+:root { color-scheme:light dark; font:112.5%/1.6 "Inter",system-ui,sans-serif; color:#151515; background:#fafafa }
+* { box-sizing:border-box }
+body { margin:0 }
+main { max-width:44rem; margin:auto; padding:clamp(1rem,5vw,3rem) }
+section { margin:0 0 2rem }
+h1,h2,p,figure { margin:0 }
+h1 { font-size:1.3rem; overflow-wrap:anywhere }
+h2 { font-size:1.15rem; margin-bottom:.8rem }
+.metric { font-size:clamp(4rem,15vw,6rem); font-weight:650; line-height:1.1; letter-spacing:-.05em; margin:.9rem 0 }
+.metric small { font-size:.35em; margin-inline-start:.2em }
+.caption { display:block; font-size:1rem; letter-spacing:normal; font-weight:500 }
+.status { display:inline-block; border:2px solid; padding:0 .45em; font-weight:700 }
+.detail,.legend,caption,figcaption { color:#484848 }
+nav,footer { display:flex; flex-wrap:wrap; gap:.35rem }
+a { color:inherit; text-underline-offset:.17em }
+nav a,footer a,.more { padding:.5rem .75rem; min-height:2.5rem }
+nav a { flex:1; text-align:center; border:1px solid; white-space:nowrap }
+nav a[aria-current] { color:white; background:#151515; border-color:#151515; font-weight:bold }
+:focus-visible { outline:3px solid; outline-offset:3px }
+svg { display:block; width:100%; height:auto; color:inherit; overflow:visible; margin-top:1rem }
+svg text { fill:currentColor; font:13px system-ui }
+.grid { stroke:#8a8a8a; stroke-dasharray:2 4 }
+.reference { fill:#dedede }
+.series,.extent { stroke:currentColor; fill:none; stroke-width:1.8 }
+circle { fill:currentColor }
+figcaption { display:flex; justify-content:space-between; gap:1rem; font-size:.8rem; font-variant-numeric:tabular-nums }
+figcaption span:last-child { text-align:end }
+table { width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums }
+caption,th,td { text-align:start; padding:.35rem .15rem }
+th,td { border-bottom:1px solid #999 }
+td:last-child,th:last-child { text-align:end }
+tr.gap td { text-align:center; font-size:.9rem; border-bottom-style:dashed }
+footer { border-top:1px solid; margin-top:1rem }
+@media (prefers-color-scheme:dark) {
+  :root { color:#eee; background:#151515 }
+  .detail,.legend,caption,figcaption { color:#ccc }
+  nav a[aria-current] { background:#eee; color:#151515; border-color:#eee }
+  .reference { fill:#414141 }
+}
