@@ -2,6 +2,14 @@
 members = ["crates/switchbot-meter"]
 resolver = "3"
 
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+
+[profile.release.package.redb]
+opt-level = 3
+
 [package]
 name = "humidity-monitor"
 version = "0.1.0"

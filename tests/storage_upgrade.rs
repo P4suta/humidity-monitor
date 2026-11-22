@@ -1,5 +1,8 @@
 #[path = "storage_upgrade/endurance.rs"]
 mod endurance;
+#[cfg(target_os = "linux")]
+#[path = "storage_upgrade/footprint.rs"]
+mod footprint;
 #[path = "storage_upgrade/recovery.rs"]
 mod recovery;
 

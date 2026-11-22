@@ -46,7 +46,8 @@ fn paths(path: &Path) -> Result<(PathBuf, Option<PathBuf>)> {
     Ok((path.to_owned(), source))
 }
 
-const CACHE_BYTES: usize = 2 * 1024 * 1024;
+const RECEIVER_CACHE_BYTES: usize = 256 * 1024;
+const INITIALIZATION_CACHE_BYTES: usize = 2 * 1024 * 1024;
 
 fn open_existing(path: &Path, address: Address) -> Result<Database> {
     ensure!(
@@ -54,7 +55,7 @@ fn open_existing(path: &Path, address: Address) -> Result<Database> {
         "database path must name a regular file"
     );
     let db = Database::builder()
-        .set_cache_size(CACHE_BYTES)
+        .set_cache_size(RECEIVER_CACHE_BYTES)
         .set_check_integrity_on_open(true)
         .open(path)
         .with_context(|| format!("open redb history at {}", path.display()))?;
@@ -132,7 +133,7 @@ fn open_with_directory_sync(
         .tempfile_in(&workspace)?;
     let result = (|| -> Result<()> {
         let db = Database::builder()
-            .set_cache_size(CACHE_BYTES)
+            .set_cache_size(INITIALIZATION_CACHE_BYTES)
             .create(staged.path())?;
         let tx = db.begin_write()?;
         tx.open_table(IDENTITY)?
@@ -166,15 +167,18 @@ fn open_with_directory_sync(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::unix::fs::MetadataExt;
 
     #[test]
     fn a_published_name_requires_a_successful_directory_sync_on_every_open() -> Result<()> {
         let dir = tempfile::tempdir()?;
+        let parent = dir.path().metadata()?;
         let path = dir.path().join("meter.redb");
         let address = "AA:BB:CC:DD:EE:FF".parse().unwrap();
         for now in [41, 42] {
             let error = open_with_directory_sync(&path, address, now, |directory| {
-                assert!(directory.metadata()?.is_dir());
+                let actual = directory.metadata()?;
+                assert_eq!((actual.dev(), actual.ino()), (parent.dev(), parent.ino()));
                 Err(std::io::Error::other("injected directory sync failure"))
             })
             .expect_err("accepted readings without a durable directory entry");
