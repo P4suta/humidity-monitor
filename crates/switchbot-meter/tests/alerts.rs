@@ -10,6 +10,20 @@ fn policy() -> Policy {
 }
 
 #[test]
+fn clock_rollback_is_ignored_but_a_second_reading_in_the_same_second_counts() {
+    let mut state = AlertState::new(100, policy());
+    assert!(state.advance(100, Some(56)).is_empty());
+    assert_eq!(state.received, Some(100));
+    assert_eq!(state.pending_since, Some(100));
+    let before = state.clone();
+    assert!(state.advance(99, Some(40)).is_empty());
+    assert_eq!(state, before);
+    assert!(state.advance(100, Some(40)).is_empty());
+    assert_eq!(state.pending_since, None);
+    assert_eq!(state.received, Some(100));
+}
+
+#[test]
 fn thresholds_use_complete_intervals_and_confirming_readings() {
     let mut state = AlertState::new(0, policy());
     for at in (0..=1800).step_by(60) {
