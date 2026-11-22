@@ -64,6 +64,7 @@ fn lock(db: &Database) -> Result<std::sync::MutexGuard<'_, Store>> {
 }
 
 async fn serve(config: Config) -> Result<()> {
+    let mut terminate = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
     let now = unix_now()?;
     let open = || {
         Store::open(
@@ -93,6 +94,7 @@ async fn serve(config: Config) -> Result<()> {
         result=collect(&config,&writer)=>result,
         result=timers(&writer)=>result,
         result=deliver(&writer,publisher)=>result,
+        _=terminate.recv()=>Ok(()),
         result=tokio::signal::ctrl_c()=>Ok(result?),
     }
 }
