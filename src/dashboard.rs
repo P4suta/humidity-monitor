@@ -86,39 +86,76 @@ fn time(at: i64, config: &Config) -> Markup {
         .map(|timestamp| timestamp.to_string());
     html! { time datetime=[utc] {(date(at,config))} }
 }
-fn coordinate(at: i64, start: i64, end: i64, rh: u8) -> (f64, f64) {
-    (
-        32.0 + 532.0 * (at - start) as f64 / (end - start) as f64,
-        118.0 - f64::from(rh),
-    )
+fn humidity_bounds(observed: Option<[u8; 2]>, reference: Option<[u8; 2]>) -> [u8; 2] {
+    let Some([low, high]) = observed
+        .into_iter()
+        .chain(reference)
+        .reduce(|[a, b], [c, d]| [a.min(c), b.max(d)])
+    else {
+        return [0, 100];
+    };
+    [
+        low.saturating_sub(2) / 10 * 10,
+        (high + 2).min(100).div_ceil(10) * 10,
+    ]
+}
+
+fn axis_time(at: i64, format: &str, config: &Config) -> Markup {
+    let Ok(stamp) = jiff::Timestamp::from_second(at) else {
+        return time(at, config);
+    };
+    let local = stamp.to_zoned(config.timezone.clone());
+    html! { time datetime=(stamp) title=(date(at,config)) { (local.strftime(format)) } }
 }
 
 fn chart(data: &[Bin], start: i64, end: i64, config: &Config) -> Markup {
+    let observed = data
+        .iter()
+        .map(|b| [b.range.low.rh, b.range.high.rh])
+        .reduce(|[a, b], [c, d]| [a.min(c), b.max(d)]);
+    let [low, high] = humidity_bounds(observed, config.reference);
+    let y = |humidity: u8| 178.0 - 158.0 * f64::from(humidity - low) / f64::from(high - low);
+    let x = |at: i64| 48.0 + 516.0 * (at - start) as f64 / (end - start) as f64;
     let runs = data.chunk_by(|a, b| a.last.at / 60 + 1 == b.first.at / 60);
     html! {figure{
-        svg viewBox="0 0 580 136" role="img" aria-labelledby="plot-title plot-desc" {
+        svg viewBox="0 0 580 190" role="img" aria-labelledby="plot-title plot-desc" {
             title id="plot-title" {"相対湿度の推移"}
             desc id="plot-desc" {
                 "縦軸は相対湿度、横軸は受信時刻です。"
-                "欠測区間で線が途切れます。"
-                "欠測が多い区間では途中の最小値と最大値を点で示します。"
-                "測定値は履歴表で確認できます。"
+                "曲線は連続して記録した湿度を結びます。欠測区間で線が途切れます。"
+                "点は単独の測定値です。"
             }
-            @if let Some([lo,hi])=config.reference {rect.reference x="32" y=(118-hi) width="532" height=(hi-lo) {}}
-            @for tick in [0,50,100]{line.grid x1="32" x2="564" y1=(118-tick) y2=(118-tick){} text x="26" y=(122-tick) text-anchor="end"{(tick)}}
+            @if let Some([lo,hi])=config.reference {
+                defs {pattern id="reference-hatch" width="12" height="12" patternUnits="userSpaceOnUse" {
+                    path.hatch d="M-3 3L3 -3M0 12L12 0M9 15L15 9" { }
+                }}
+                rect.reference x="48" y=(y(hi)) width="516" height=(y(lo)-y(hi)) fill="url(#reference-hatch)" {}
+            }
+            @for tick in [high,low+(high-low)/2,low]{
+                line.grid x1="48" x2="564" y1=(y(tick)) y2=(y(tick)){}
+                text x="40" y=(y(tick)) dominant-baseline="middle" text-anchor="end"{(tick) "%"}
+            }
             @for run in runs {
                 @if let [bin] = run && bin.first == bin.last {
-                    @let (x, y) = coordinate(bin.first.at, start, end, bin.first.rh);
-                    circle cx=(x) cy=(y) r="2.5" {}
+                    circle cx=(x(bin.first.at)) cy=(y(bin.first.rh)) r="2.8" {}
                 } @else {
                     @let points: Vec<_> = curve::anchors(run).into_iter()
-                        .map(|p| coordinate(p.at, start, end, p.rh)).collect();
+                        .map(|p| (x(p.at), y(p.rh))).collect();
                     path.series d=(curve::path(&points)) {}
                 }
             }
         }
-        figcaption {span{(date(start,config))} span{(date(end,config))}}
-        @if let Some([lo,hi])=config.reference {p.legend{"網掛けは目安の " (lo) "〜" (hi) "％です。"}}
+        div.axis-time {
+            @let format = if end-start>86400 { "%m/%d" } else { "%H:%M" };
+            @let ends = if end-start>=12*3600 && end-start<=86400 { "%m/%d %H:%M" } else { format };
+            (axis_time(start, ends, config))
+            (axis_time(start+(end-start)/2, format, config))
+            (axis_time(end, ends, config))
+        }
+        figcaption {
+            @if let Some([lo,hi])=observed {span{"最低 " strong{(lo) "％"}} span{"最高 " strong{(hi) "％"}}}
+            @if let Some([lo,hi])=config.reference {span{"網掛けの目安 " (lo) "〜" (hi) "％"}}
+        }
         @if data.is_empty(){p{"期間内の記録はありません。"}}
     }}
 }
@@ -136,7 +173,13 @@ fn page(app: &App, view: View) -> Result<Markup> {
         .snapshot()?;
     let current = db.latest()?;
     let state = db.state()?;
-    let data = db.bins(start, now)?;
+    let installation = state.started.clamp(start, now - 60);
+    let plot_start = if db.history(start, installation, 1)?.is_empty() {
+        installation
+    } else {
+        start
+    };
+    let data = db.bins(plot_start, now)?;
     let end = view.before.unwrap_or(now + 1).clamp(start, now + 1);
     let rows = db.history(start, end, PAGE_SIZE as u32 + 1)?;
     drop(db);
@@ -161,11 +204,11 @@ fn page(app: &App, view: View) -> Result<Markup> {
             }@else{p{"有効な広告の受信を待っています。"}}
         }
         section aria-labelledby="trend"{h2 id="trend"{"湿度の推移"}
-            nav aria-label="表示期間"{@for period in Period::ALL{
+            nav.periods aria-label="表示期間"{@for period in Period::ALL{
                 @let (slug,name,_)=period.info();
                 a href=(format!("/?period={slug}&paused={paused}")) data-period=(slug) aria-current=[(period==view.period).then_some("page")]{(name)}
             }}
-            (chart(&data,start,now,c))
+            (chart(&data,plot_start,now,c))
         }
         section id="history" aria-label="測定履歴"{
             @if !history {
@@ -197,6 +240,19 @@ fn page(app: &App, view: View) -> Result<Markup> {
 mod tests {
     use super::*;
     use crate::{Sample, trend};
+
+    #[test]
+    fn fits_observations_and_reference_inside_the_humidity_axis() {
+        for (observed, reference, expected) in [
+            (Some([33, 34]), Some([40, 50]), [30, 60]),
+            (Some([0, 0]), None, [0, 10]),
+            (Some([100, 100]), None, [90, 100]),
+            (Some([0, 100]), Some([40, 50]), [0, 100]),
+            (None, None, [0, 100]),
+        ] {
+            assert_eq!(humidity_bounds(observed, reference), expected);
+        }
+    }
 
     #[test]
     fn chart_anchors_keep_observations_in_time_order() {

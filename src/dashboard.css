@@ -1,39 +1,46 @@
-:root { color-scheme:light dark; font:112.5%/1.6 "Inter",system-ui,sans-serif; color:#151515; background:#fafafa }
-* { box-sizing:border-box }
-body { margin:0 }
-main { max-width:44rem; margin:auto; padding:clamp(1rem,5vw,3rem) }
-section { margin:0 0 2rem }
-h1,h2,p,figure { margin:0 }
-h1 { font-size:1.3rem; overflow-wrap:anywhere }
-h2 { font-size:1.15rem; margin-bottom:.8rem }
-.metric { font-size:clamp(4rem,15vw,6rem); font-weight:650; line-height:1.1; letter-spacing:-.05em; margin:.9rem 0 }
-.metric small { font-size:.35em; margin-inline-start:.2em }
-.caption { display:block; font-size:1rem; letter-spacing:normal; font-weight:500 }
-.status { display:inline-block; border:2px solid; padding:0 .45em; font-weight:700 }
-.detail,.legend,caption,figcaption { color:#484848 }
-nav,footer { display:flex; flex-wrap:wrap; gap:.35rem }
-a { color:inherit; text-underline-offset:.17em }
-nav a,footer a,.more { padding:.5rem .75rem; min-height:2.5rem }
-nav a { flex:1; text-align:center; border:1px solid; white-space:nowrap }
-nav a[aria-current] { color:white; background:#151515; border-color:#151515; font-weight:bold }
-:focus-visible { outline:3px solid; outline-offset:3px }
-svg { display:block; width:100%; height:auto; color:inherit; overflow:visible; margin-top:1rem }
-svg text { fill:currentColor; font:13px system-ui }
-.grid { stroke:#8a8a8a; stroke-dasharray:2 4 }
-.reference { fill:#dedede }
-.series,.extent { stroke:currentColor; fill:none; stroke-width:1.8 }
-circle { fill:currentColor }
-figcaption { display:flex; justify-content:space-between; gap:1rem; font-size:.8rem; font-variant-numeric:tabular-nums }
-figcaption span:last-child { text-align:end }
-table { width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums }
-caption,th,td { text-align:start; padding:.35rem .15rem }
-th,td { border-bottom:1px solid #999 }
-td:last-child,th:last-child { text-align:end }
-tr.gap td { text-align:center; font-size:.9rem; border-bottom-style:dashed }
-footer { border-top:1px solid; margin-top:1rem }
-@media (prefers-color-scheme:dark) {
-  :root { color:#eee; background:#151515 }
-  .detail,.legend,caption,figcaption { color:#ccc }
-  nav a[aria-current] { background:#eee; color:#151515; border-color:#eee }
-  .reference { fill:#414141 }
+:root {
+  color-scheme: light dark;
+  --ink: #000;
+  --paper: #fff;
+  font: 112.5%/1.75 Inter, system-ui, sans-serif;
+  color: var(--ink);
+  background: var(--paper);
 }
+@media (prefers-color-scheme: dark) {
+  :root { --ink: #fff; --paper: #000 }
+}
+* { box-sizing: border-box }
+body, h1, h2, p, figure { margin: 0 }
+main { max-width: 42rem; margin: auto; padding: clamp(1rem, 5vw, 2.75rem) }
+section { margin-block-end: 2rem }
+h1 { font-size: 1.25rem; overflow-wrap: anywhere }
+h2 { font-size: 1.15rem; margin-block-end: .75rem }
+.metric { margin: .6rem 0; font-size: clamp(4rem, 15vw, 6rem); font-weight: 650; line-height: 1.05; letter-spacing: -.05em }
+.metric small { margin-inline-start: .15em; font-size: .35em }
+.caption { display: block; font-size: 1rem; font-weight: 500; letter-spacing: normal; line-height: 1.75 }
+.status { display: inline-block; border: 2px solid; padding-inline: .45em; font-weight: 700 }
+time, .metric, figcaption, table { font-variant-numeric: tabular-nums }
+a { color: inherit; text-underline-offset: .2em }
+:focus-visible { outline: 3px solid; outline-offset: 3px }
+.periods { display: grid; grid-template-columns: repeat(4, 1fr); border-block-end: 1px solid }
+.periods a { display: grid; min-height: 48px; place-content: center; text-align: center; text-decoration: none }
+.periods a[aria-current] { border-block-end: 3px solid; font-weight: 750 }
+.periods a:hover, .history-link:hover { text-decoration: underline }
+svg { display: block; width: 100%; height: auto; margin-block-start: 1rem; overflow: visible }
+svg text { fill: currentColor; font: 19px system-ui, sans-serif }
+.grid { stroke: currentColor; stroke-width: .8; stroke-dasharray: 1 6 }
+.hatch { fill: none; stroke: currentColor; stroke-width: .65 }
+.series { fill: none; stroke: currentColor; stroke-width: 2.25; vector-effect: non-scaling-stroke; stroke-linecap: round; stroke-linejoin: round }
+circle { fill: currentColor }
+.axis-time { display: flex; justify-content: space-between; gap: .35rem; margin-inline: 8.28% 2.76%; font-size: .83rem }
+.axis-time time:last-child { text-align: end }
+figcaption { display: flex; flex-wrap: wrap; gap: .2rem 1rem; margin-block-start: .8rem }
+.history-link, .history-pages a, footer a { display: inline-flex; align-items: center; min-height: 48px; padding-inline: .25rem }
+#history { border-block-start: 1px solid; padding-block-start: .6rem }
+table { width: 100%; border-collapse: collapse }
+caption, th, td { text-align: start; padding: .35rem .15rem }
+th { border-block-end: 1px solid }
+td:last-child, th:last-child { text-align: end }
+tr.gap td { text-align: center; font-size: .9rem; border-block: 1px dashed }
+.history-pages, footer { display: flex; flex-wrap: wrap; gap: .3rem 1rem }
+footer { border-block-start: 1px solid; padding-block-start: .5rem }

@@ -136,6 +136,16 @@ async fn mobile_browser_navigates_all_ranges_and_exposes_missing_history() -> Re
         ("1y", "1年"),
     ] {
         let link = element(&client, &session, &format!("nav a[data-period='{range}']")).await?;
+        let bounds: Value = client
+            .get(format!("{session}/element/{link}/rect"))
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        for dimension in ["width", "height"] {
+            assert!(bounds["value"][dimension].as_f64().unwrap() >= 48.0);
+        }
         client
             .post(format!("{session}/element/{link}/click"))
             .json(&json!({}))
@@ -155,6 +165,15 @@ async fn mobile_browser_navigates_all_ranges_and_exposes_missing_history() -> Re
             .await?
             .error_for_status()?;
         element(&client, &session, "tbody tr time[datetime]").await?;
+        let refresh: Value = client
+            .post(format!("{session}/elements"))
+            .json(&json!({"using":"css selector","value":"meta[http-equiv='refresh']"}))
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        assert!(refresh["value"].as_array().unwrap().is_empty());
         let table = text(&client, &session, "table").await?;
         ensure!(
             table.contains("欠測")
