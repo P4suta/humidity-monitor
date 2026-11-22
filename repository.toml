@@ -1,4 +1,4 @@
-name = "humidity-monitor"
+name = "`humidity-monitor`"
 summary = "Record SwitchBot temperature and humidity over Bluetooth on Linux"
 install = "cargo install --locked --path ."
 usage = "humidity-monitor discover hci0"

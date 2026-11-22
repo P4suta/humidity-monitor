@@ -1,4 +1,4 @@
-# Humidity-monitor
+# `humidity-monitor`
 
 Record SwitchBot temperature and humidity over Bluetooth on Linux.
 
