@@ -6,6 +6,8 @@ use switchbot_meter::{Address, AlertState, Event, Policy, Reading};
 
 mod files;
 mod legacy;
+#[cfg(test)]
+mod recovery;
 mod schema;
 use schema::*;
 
