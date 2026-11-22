@@ -112,20 +112,29 @@ fn assert_commit(path: &Path, committed: bool) -> Result<()> {
 }
 
 #[test]
+fn the_storage_boundary_requires_a_persistent_filesystem_name() {
+    for name in ["", ":memory:", "file:history?mode=memory"] {
+        assert!(require_database_file(Path::new(name)).is_err(), "{name}");
+    }
+    assert!(require_database_file(Path::new("history.redb")).is_ok());
+}
+
+#[test]
 fn idle_retention_ticks_write_only_when_a_sample_actually_expires() -> Result<()> {
     let dir = tempfile::tempdir()?;
     let mut store = open(&dir.path().join("retention.redb"))?.with_notifications(false);
-    store.record(0, reading(45))?;
-    store.tick(600)?;
-    let boundary = 365 * 86400;
+    let received = 12_000;
+    store.record(received, reading(45))?;
+    store.tick(received + 600)?;
+    let boundary = received + 365 * 86400;
     {
         let tx = store.db.begin_write()?;
         assert!(!store.stage(&tx, boundary, None)?);
     }
-    assert_eq!(store.history(0, 1, 1)?.len(), 1);
+    assert_eq!(store.history(received, received + 1, 1)?.len(), 1);
     store.tick(i64::MAX)?;
-    assert!(store.history(0, 1, 1)?.is_empty());
-    assert_eq!(store.latest()?.unwrap().received, 0);
+    assert!(store.history(received, received + 1, 1)?.is_empty());
+    assert_eq!(store.latest()?.unwrap().received, received);
     Ok(())
 }
 
@@ -149,6 +158,9 @@ fn an_open_dashboard_snapshot_keeps_one_generation_while_the_writer_advances() -
     assert_eq!(after.state()?.pending_since, Some(602));
     assert_eq!(after.history(0, 603, 2)?.len(), 2);
     assert_eq!(after.bins(1, 602)?.len(), 2);
+    assert_eq!(after.bins(0, i64::MAX)?.len(), 2);
+    let point = after.bins(602, 602)?;
+    assert_eq!((point[0].first, point[0].last), (602, 602));
     Ok(())
 }
 
