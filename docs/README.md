@@ -59,14 +59,14 @@ Stop the receiver before upgrading.
 On first start, the receiver imports a neighboring `readings.sqlite` file into `readings.redb`.
 An existing configuration that names `readings.sqlite` also opens the new file.
 For a custom SQLite filename, the receiver appends `.redb` to the filename.
-Allow space for both databases during import.
+The import needs disk space for both databases.
 The receiver keeps the SQLite source and publishes the redb file after importing the complete history and pending notifications.
 Restarting after an interrupted import repeats the import from the source.
 
 To back up history, stop the receiver, copy the redb file to separate storage and restart the receiver.
 To restore, stop the receiver and point `database` to a separate copy of the backup.
 Start the receiver with the original meter address and check the last reception and history on the dashboard.
-Keep any existing SQLite WAL files with the original SQLite database when archiving it.
+Archive the original SQLite database together with its `-wal` file when a write-ahead log is present.
 
 ## Send notifications
 

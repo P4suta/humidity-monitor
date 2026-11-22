@@ -15,7 +15,7 @@ The first sample in a minute stays fixed until its retention period ends.
 
 ## Decision
 
-Use typed redb tables for samples, receiver state and pending notifications.
+Use typed redb tables for samples, receiver state, and pending notifications.
 Commit each reception and its notification transitions together with immediate durability.
 Read the dashboard from one snapshot.
 Import a SQLite snapshot into a private file and publish the completed database without overwriting existing files.
@@ -25,7 +25,7 @@ Import a SQLite snapshot into a private file and publish the completed database 
 
 SQLite already supports durable transactions and SQL chart aggregation.
 The redb tables bring the minute key and sample layout into Rust.
-Fjall requires application codecs for keys and values.
+Fjall requires the receiver to encode keys and values.
 
 ## Consequences
 
@@ -36,5 +36,5 @@ Revisit the storage choice if reading a year of samples delays recording.
 ## Confirmation
 
 Close the writer abruptly around a commit and reopen the same database.
-Compare ranges, missing minutes, expiry and pending notifications before and after an upgrade.
+Compare ranges, missing minutes, expiry, and pending notifications before and after an upgrade.
 Test storage failures and concurrent year scans.
