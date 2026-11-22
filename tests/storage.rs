@@ -18,8 +18,7 @@ fn reading(humidity: u8) -> Reading {
 }
 
 #[test]
-fn sqlite_restart_keeps_minute_history_live_reception_and_pending_notifications()
--> anyhow::Result<()> {
+fn restart_keeps_minute_history_live_reception_and_pending_notifications() -> anyhow::Result<()> {
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("meter.sqlite");
     let address = MAC.parse().unwrap();
@@ -57,6 +56,61 @@ fn sqlite_restart_keeps_minute_history_live_reception_and_pending_notifications(
         )
         .is_err()
     );
+    Ok(())
+}
+
+#[test]
+fn a_reference_log_matches_queries_across_duplicate_minutes_clock_reversals_and_expiry()
+-> anyhow::Result<()> {
+    use std::collections::BTreeMap;
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("meter.redb");
+    let open = || Store::open(&path, MAC.parse().unwrap(), 0, POLICY, 1);
+    let mut store = open()?.with_notifications(false);
+    let mut history = BTreeMap::new();
+    let mut latest = None;
+    let mut time = 0i64;
+    for step in 0u32..360 {
+        let delta = [0, 1, 59, -6, 61, 7301, 1, -2, 0, 600][step as usize % 10];
+        time += delta;
+        let rh = (step % 101) as u8;
+        store.record(time, reading(rh))?;
+        if latest.is_none_or(|(last, _)| time >= last) {
+            history.entry(time / 60).or_insert((time, rh));
+            history.retain(|_, (at, _)| *at >= time - 86400);
+            latest = Some((time, rh));
+        }
+        if step % 40 == 0 {
+            drop(store);
+            store = open()?.with_notifications(false);
+        }
+        let row = store.latest()?.unwrap();
+        assert_eq!(Some((row.received, row.humidity)), latest);
+        for (start, end, limit) in [
+            (0, time + 1, 3),
+            (time - 7301, time, 10),
+            (0, i64::MAX, 0),
+            (80, 79, 1),
+            (time, time, 1),
+        ] {
+            let expected: Vec<_> = history
+                .values()
+                .rev()
+                .copied()
+                .filter(|(at, _)| (start..end).contains(at))
+                .take(limit as usize)
+                .collect();
+            let actual: Vec<_> = store
+                .history(start, end, limit)?
+                .into_iter()
+                .map(|s| (s.received, s.humidity))
+                .collect();
+            assert_eq!(
+                actual, expected,
+                "step {step}, {start}..{end}, limit {limit}"
+            );
+        }
+    }
     Ok(())
 }
 

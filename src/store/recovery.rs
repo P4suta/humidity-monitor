@@ -111,6 +111,29 @@ fn assert_commit(path: &Path, committed: bool) -> Result<()> {
     Ok(())
 }
 
+#[test]
+fn an_open_dashboard_snapshot_keeps_one_generation_while_the_writer_advances() -> Result<()> {
+    let dir = tempfile::tempdir()?;
+    let mut writer = open(&dir.path().join("meter.redb"))?;
+    writer.record(1, reading(45))?;
+    let before = writer.snapshot()?;
+    let mut next = writer.clone();
+    thread::spawn(move || next.record(602, reading(56)))
+        .join()
+        .unwrap()?;
+    assert_eq!(before.latest()?.unwrap().received, 1);
+    assert_eq!(before.state()?.received, Some(1));
+    assert_eq!(before.history(i64::MIN, i64::MAX, 2)?.len(), 1);
+    assert_eq!(before.bins(1, 1)?[0].last_rh, 45);
+    assert!(before.bins(2, 1)?.is_empty());
+    let after = writer.snapshot()?;
+    assert_eq!(after.latest()?.unwrap().received, 602);
+    assert_eq!(after.state()?.pending_since, Some(602));
+    assert_eq!(after.history(0, 603, 2)?.len(), 2);
+    assert_eq!(after.bins(1, 602)?.len(), 2);
+    Ok(())
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Failure {
     Full,
