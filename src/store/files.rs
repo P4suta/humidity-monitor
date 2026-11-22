@@ -167,15 +167,18 @@ fn open_with_directory_sync(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::unix::fs::MetadataExt;
 
     #[test]
     fn a_published_name_requires_a_successful_directory_sync_on_every_open() -> Result<()> {
         let dir = tempfile::tempdir()?;
+        let parent = dir.path().metadata()?;
         let path = dir.path().join("meter.redb");
         let address = "AA:BB:CC:DD:EE:FF".parse().unwrap();
         for now in [41, 42] {
             let error = open_with_directory_sync(&path, address, now, |directory| {
-                assert!(directory.metadata()?.is_dir());
+                let actual = directory.metadata()?;
+                assert_eq!((actual.dev(), actual.ino()), (parent.dev(), parent.ino()));
                 Err(std::io::Error::other("injected directory sync failure"))
             })
             .expect_err("accepted readings without a durable directory entry");
