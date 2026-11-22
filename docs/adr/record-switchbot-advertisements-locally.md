@@ -7,6 +7,7 @@ date: 2026-11-22
 ## Status
 
 Proposed.
+The [redb storage decision](store-meter-history-in-redb.md) supersedes the SQLite choice.
 
 ## Context
 
