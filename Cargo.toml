@@ -11,8 +11,10 @@ publish = false
 [dependencies]
 anyhow = "1"
 axum = "0.8"
-chrono = { version = "0.4", default-features = false, features = ["std"] }
-chrono-tz = "0.10"
+jiff = { version = "0.2", default-features = false, features = [
+  "std",
+  "tzdb-bundle-always",
+] }
 clap = { version = "4", features = ["derive"] }
 switchbot-meter = { path = "crates/switchbot-meter" }
 futures-util = "0.3"

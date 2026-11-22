@@ -53,8 +53,7 @@ impl Publisher {
             Event::Lost => "受信途絶",
             Event::Received => "受信再開",
         };
-        let time = chrono::DateTime::from_timestamp(at, 0)
-            .ok_or_else(|| anyhow::anyhow!("invalid event time"))?;
+        let time = jiff::Timestamp::from_second(at)?;
         let response = self
             .client
             .post(self.url.clone())

@@ -1,7 +1,7 @@
 use std::{net::SocketAddr, path::PathBuf};
 
 use anyhow::{Context, Result, ensure};
-use chrono_tz::Tz;
+use jiff::tz::TimeZone;
 use serde::Deserialize;
 use switchbot_meter::{Address, Policy};
 
@@ -44,7 +44,7 @@ pub struct Config {
     pub label: String,
     pub adapter: String,
     pub listen: SocketAddr,
-    pub timezone: Tz,
+    pub timezone: TimeZone,
     pub retention_days: u32,
     pub reference: Option<[u8; 2]>,
     pub dry_below: Option<u8>,
@@ -92,11 +92,7 @@ impl Config {
             label,
             adapter,
             listen: f.listen.unwrap_or(([127, 0, 0, 1], 8080).into()),
-            timezone: f
-                .timezone
-                .as_deref()
-                .unwrap_or("UTC")
-                .parse()
+            timezone: TimeZone::get(f.timezone.as_deref().unwrap_or("UTC"))
                 .context("invalid time zone")?,
             retention_days,
             reference: f.reference,

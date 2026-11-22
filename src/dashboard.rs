@@ -72,10 +72,10 @@ async fn index(
         })
 }
 fn date(at: i64, config: &Config) -> String {
-    chrono::DateTime::from_timestamp(at, 0)
+    jiff::Timestamp::from_second(at)
         .map(|t| {
-            t.with_timezone(&config.timezone)
-                .format("%Y-%m-%d %H:%M:%S")
+            t.to_zoned(config.timezone.clone())
+                .strftime("%Y-%m-%d %H:%M:%S")
                 .to_string()
         })
         .unwrap_or_default()
@@ -188,7 +188,7 @@ fn page(app: &App, view: View) -> Result<Markup> {
             p.metric{span.caption{"相対湿度"} @if let Some(r)=&current{(r.humidity) small{"％"}}@else{"—"}}
             @if stale {p.status{"受信途絶"}} @else if current.is_none(){p.status{"受信待ち"}}
             @if let Some(r)=&current {
-                p{"最終受信 " time{(date(r.received,c))} " " (c.timezone.name())}
+                p{"最終受信 " time{(date(r.received,c))} " " (c.timezone.iana_name().unwrap_or("UTC"))}
                 p.detail{(format!("{:.1}",f64::from(r.tenths_c)/10.0)) " ℃　電池 " (r.battery) "％"
                     @if c.dry_below.is_some_and(|limit|r.humidity<limit){"　乾燥"}
                     @if state.high{"　高湿度"}
@@ -203,7 +203,7 @@ fn page(app: &App, view: View) -> Result<Markup> {
             (chart(&data,start,now,c))
         }
         section aria-labelledby="history"{h2 id="history"{"測定履歴"}
-            table{caption{(label) "の測定値 · " (c.timezone.name())}
+            table{caption{(label) "の測定値 · " (c.timezone.iana_name().unwrap_or("UTC"))}
                 thead{tr{th scope="col"{"受信時刻"}th scope="col"{"相対湿度"}}}
                 tbody{@for (i,r) in rows.iter().take(60).enumerate(){
                     @if i==0 && end/60-r.received/60>1 || i>0 && rows[i-1].received/60-r.received/60>1 {tr.gap{td colspan="2"{"欠測"}}}

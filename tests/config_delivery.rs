@@ -34,7 +34,7 @@ fn installations_can_set_all_display_and_monitoring_options() -> anyhow::Result<
     assert_eq!(
         (
             c.label.as_str(),
-            c.timezone.name(),
+            c.timezone.iana_name().unwrap(),
             c.reference,
             c.dry_below,
             c.retention_days
