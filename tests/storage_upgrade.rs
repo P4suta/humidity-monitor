@@ -1,3 +1,6 @@
+#[path = "storage_upgrade/recovery.rs"]
+mod recovery;
+
 use anyhow::Result;
 use humidity_monitor::Store;
 use rusqlite::Connection;

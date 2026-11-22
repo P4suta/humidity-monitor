@@ -10,6 +10,14 @@ use std::{
 };
 use switchbot_meter::Address;
 
+fn entry_exists(path: &Path) -> std::io::Result<bool> {
+    match fs::symlink_metadata(path) {
+        Ok(_) => Ok(true),
+        Err(e) if e.kind() == ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(e),
+    }
+}
+
 fn sqlite_file(path: &Path) -> Result<bool> {
     let metadata = match fs::metadata(path) {
         Ok(metadata) => metadata,
@@ -30,7 +38,7 @@ fn paths(path: &Path) -> Result<(PathBuf, Option<PathBuf>)> {
         return Ok((path.with_extension("redb"), Some(path.to_owned())));
     }
     let companion = path.with_added_extension("redb");
-    if sqlite_file(path)? || (!path.try_exists()? && companion.try_exists()?) {
+    if sqlite_file(path)? || (!entry_exists(path)? && entry_exists(&companion)?) {
         return Ok((companion, Some(path.to_owned())));
     }
     let source =
@@ -76,7 +84,7 @@ fn open_existing(path: &Path, address: Address) -> Result<Database> {
 
 pub(super) fn open(path: &Path, address: Address, now: i64) -> Result<Database> {
     let (target, source) = paths(path)?;
-    if target.try_exists()? {
+    if entry_exists(&target)? {
         return open_existing(&target, address);
     }
     let parent = target
@@ -87,7 +95,7 @@ pub(super) fn open(path: &Path, address: Address, now: i64) -> Result<Database> 
     directory
         .lock()
         .context("lock database directory during initialization")?;
-    if target.try_exists()? {
+    if entry_exists(&target)? {
         return open_existing(&target, address);
     }
     let workspace = target.with_added_extension("humidity-stage");
@@ -120,7 +128,7 @@ pub(super) fn open(path: &Path, address: Address, now: i64) -> Result<Database> 
         tx.open_table(OUTBOX)?;
         tx.open_table(SAMPLES)?;
         if let Some(source) = source
-            && source.try_exists()?
+            && entry_exists(&source)?
         {
             legacy::import(&source, &tx, address).context("import SQLite meter history")?;
         } else {
